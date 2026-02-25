@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ssmtree"
+version = "0.1.0"
+description = "Render AWS SSM Parameter Store as a colorized terminal tree"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "click>=8.1",
+    "rich>=13.0",
+    "boto3>=1.26",
+]
+
+[project.scripts]
+ssmtree = "ssmtree.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "pytest-cov",
+    "moto[ssm]>=4",
+    "black",
+    "ruff",
+    "mypy",
+    "boto3-stubs[ssm]",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
