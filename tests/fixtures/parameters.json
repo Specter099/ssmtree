@@ -1,0 +1,72 @@
+[
+  {
+    "Name": "/app/prod/db/host",
+    "Value": "prod-db.example.com",
+    "Type": "String",
+    "Version": 1,
+    "LastModifiedDate": "2024-01-15T10:00:00Z"
+  },
+  {
+    "Name": "/app/prod/db/port",
+    "Value": "5432",
+    "Type": "String",
+    "Version": 2,
+    "LastModifiedDate": "2024-01-16T11:00:00Z"
+  },
+  {
+    "Name": "/app/prod/db/password",
+    "Value": "s3cr3t!",
+    "Type": "SecureString",
+    "Version": 3,
+    "LastModifiedDate": "2024-01-17T12:00:00Z"
+  },
+  {
+    "Name": "/app/prod/api/key",
+    "Value": "api-key-prod-abc123",
+    "Type": "SecureString",
+    "Version": 1,
+    "LastModifiedDate": "2024-01-18T09:00:00Z"
+  },
+  {
+    "Name": "/app/prod/api/allowed_ips",
+    "Value": "10.0.0.1,10.0.0.2,10.0.0.3",
+    "Type": "StringList",
+    "Version": 1,
+    "LastModifiedDate": "2024-01-18T09:30:00Z"
+  },
+  {
+    "Name": "/app/prod/feature_flags",
+    "Value": "dark_mode,beta_ui",
+    "Type": "StringList",
+    "Version": 1,
+    "LastModifiedDate": "2024-01-19T08:00:00Z"
+  },
+  {
+    "Name": "/app/staging/db/host",
+    "Value": "staging-db.example.com",
+    "Type": "String",
+    "Version": 1,
+    "LastModifiedDate": "2024-01-15T10:00:00Z"
+  },
+  {
+    "Name": "/app/staging/db/port",
+    "Value": "5432",
+    "Type": "String",
+    "Version": 1,
+    "LastModifiedDate": "2024-01-15T10:00:00Z"
+  },
+  {
+    "Name": "/app/staging/db/password",
+    "Value": "staging-pass",
+    "Type": "SecureString",
+    "Version": 1,
+    "LastModifiedDate": "2024-01-15T10:00:00Z"
+  },
+  {
+    "Name": "/app/staging/api/key",
+    "Value": "api-key-staging-xyz789",
+    "Type": "SecureString",
+    "Version": 1,
+    "LastModifiedDate": "2024-01-15T10:00:00Z"
+  }
+]
