@@ -28,7 +28,7 @@ def _param(path: str, value: str = "val", type_: str = "String") -> Parameter:
 PROD_PARAMS = [
     _param("/app/prod/db/host", "prod-host"),
     _param("/app/prod/db/port", "5432"),
-    _param("/app/prod/db/password", "s3cr3t", "SecureString"),
+    _param("/app/prod/db/password", "FAKE-test-password", "SecureString"),
 ]
 
 STAGING_PARAMS = [
@@ -69,6 +69,38 @@ class TestMainCommand:
         paths = {item["path"] for item in data}
         assert "/app/prod/db/host" in paths
 
+    def test_json_output_redacts_secure_strings_by_default(self, runner):
+        with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
+            result = runner.invoke(main, ["--output", "json", "/app/prod"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        secure = [item for item in data if item["type"] == "SecureString"]
+        assert len(secure) == 1
+        assert secure[0]["value"] == "***REDACTED***"
+
+    def test_json_output_includes_secrets_when_flagged(self, runner):
+        with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
+            result = runner.invoke(
+                main, ["--output", "json", "--include-secrets", "/app/prod"]
+            )
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        secure = [item for item in data if item["type"] == "SecureString"]
+        assert len(secure) == 1
+        assert secure[0]["value"] == "FAKE-test-password"
+
+    def test_values_hidden_by_default(self, runner):
+        with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
+            result = runner.invoke(main, ["/app/prod"])
+        assert result.exit_code == 0
+        assert "prod-host" not in result.output
+
+    def test_show_values(self, runner):
+        with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
+            result = runner.invoke(main, ["--show-values", "/app/prod"])
+        assert result.exit_code == 0
+        assert "prod-host" in result.output
+
     def test_hide_values(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
             result = runner.invoke(main, ["--hide-values", "/app/prod"])
@@ -94,6 +126,14 @@ class TestMainCommand:
         mock_fetch.assert_called_once()
         call_args = mock_fetch.call_args
         assert call_args[0][0] == "/"
+
+    def test_invalid_path_exits_nonzero(self, runner):
+        result = runner.invoke(main, ["no-leading-slash"])
+        assert result.exit_code != 0
+
+    def test_path_validation_rejects_empty(self, runner):
+        result = runner.invoke(main, [" "])
+        assert result.exit_code != 0
 
 
 class TestDiffCommand:
@@ -125,6 +165,23 @@ class TestDiffCommand:
         assert "added" in data
         assert "removed" in data
         assert "changed" in data
+
+    def test_diff_json_redacts_secure_strings_by_default(self, runner):
+        prod = [_param("/prod/secret", "top-secret", "SecureString")]
+        staging = [_param("/staging/secret", "also-secret", "SecureString")]
+        with patch("ssmtree.cli.fetch_parameters", side_effect=[prod, staging]):
+            result = runner.invoke(
+                main, ["diff", "--output", "json", "/prod", "/staging"]
+            )
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        for entry in data["changed"]:
+            assert entry["old_value"] == "***REDACTED***"
+            assert entry["new_value"] == "***REDACTED***"
+
+    def test_diff_validates_paths(self, runner):
+        result = runner.invoke(main, ["diff", "no-slash", "/staging"])
+        assert result.exit_code != 0
 
 
 class TestCopyCommand:
@@ -159,9 +216,46 @@ class TestCopyCommand:
     def test_copy_invokes_copy_namespace(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
             with patch("ssmtree.cli.boto3"):
-                with patch("ssmtree.cli.copy_namespace", return_value=["/staging/a"]) as mock_copy:
+                with patch(
+                    "ssmtree.cli.copy_namespace",
+                    return_value=(["/staging/a"], []),
+                ) as mock_copy:
                     result = runner.invoke(
-                        main, ["copy", "/app/prod", "/app/staging"]
+                        main, ["copy", "--yes", "/app/prod", "/app/staging"]
                     )
         assert result.exit_code == 0
         mock_copy.assert_called_once()
+
+    def test_copy_without_yes_prompts(self, runner):
+        with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
+            with patch("ssmtree.cli.boto3"):
+                with patch(
+                    "ssmtree.cli.copy_namespace",
+                    return_value=(["/staging/a"], []),
+                ):
+                    # Respond 'n' to the confirmation prompt
+                    result = runner.invoke(
+                        main, ["copy", "/app/prod", "/app/staging"], input="n\n"
+                    )
+        assert result.exit_code == 0
+        assert "Aborted" in result.output
+
+    def test_copy_validates_paths(self, runner):
+        result = runner.invoke(main, ["copy", "no-slash", "/staging"])
+        assert result.exit_code != 0
+
+    def test_copy_reports_failures(self, runner):
+        with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
+            with patch("ssmtree.cli.boto3"):
+                with patch(
+                    "ssmtree.cli.copy_namespace",
+                    return_value=(
+                        ["/staging/a"],
+                        [("/staging/b", "AccessDenied")],
+                    ),
+                ):
+                    result = runner.invoke(
+                        main, ["copy", "--yes", "/app/prod", "/app/staging"]
+                    )
+        assert result.exit_code == 0
+        assert "Failed 1" in result.output

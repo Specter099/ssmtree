@@ -74,7 +74,7 @@ def prod_params():
         Parameter(
             path="/app/prod/db/password",
             name="password",
-            value="s3cr3t!",
+            value="FAKE-test-password",
             type="SecureString",
             version=3,
             last_modified=datetime(2024, 1, 17, tzinfo=UTC),
@@ -82,7 +82,7 @@ def prod_params():
         Parameter(
             path="/app/prod/api/key",
             name="key",
-            value="api-key-prod-abc123",
+            value="TEST-api-key-not-real",
             type="SecureString",
             version=1,
             last_modified=datetime(2024, 1, 18, tzinfo=UTC),
@@ -131,7 +131,7 @@ def staging_params():
         Parameter(
             path="/app/staging/db/password",
             name="password",
-            value="staging-pass",
+            value="FAKE-staging-password",
             type="SecureString",
             version=1,
             last_modified=datetime(2024, 1, 15, tzinfo=UTC),
@@ -139,7 +139,7 @@ def staging_params():
         Parameter(
             path="/app/staging/api/key",
             name="key",
-            value="api-key-staging-xyz789",
+            value="TEST-staging-key-not-real",
             type="SecureString",
             version=1,
             last_modified=datetime(2024, 1, 15, tzinfo=UTC),

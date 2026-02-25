@@ -89,15 +89,17 @@ def render_diff(
     changed: list[tuple[Parameter, Parameter]],
     path1: str,
     path2: str,
+    show_values: bool = False,
 ) -> Table:
     """Render a diff table between two SSM namespaces.
 
     Args:
-        added:   Parameters present in *path2* but not *path1*.
-        removed: Parameters present in *path1* but not *path2*.
-        changed: ``(old, new)`` pairs where value differs.
-        path1:   Source namespace label.
-        path2:   Target namespace label.
+        added:       Parameters present in *path2* but not *path1*.
+        removed:     Parameters present in *path1* but not *path2*.
+        changed:     ``(old, new)`` pairs where value differs.
+        path1:       Source namespace label.
+        path2:       Target namespace label.
+        show_values: When *False*, parameter values are hidden in the table.
 
     Returns:
         A :class:`rich.table.Table`.
@@ -105,20 +107,30 @@ def render_diff(
     table = Table(title=f"Diff: {path1}  →  {path2}", show_lines=True)
     table.add_column("Status", style="bold", width=10)
     table.add_column("Relative Path")
-    table.add_column(path1, style="red")
-    table.add_column(path2, style="green")
+    if show_values:
+        table.add_column(path1, style="red")
+        table.add_column(path2, style="green")
 
     for param in sorted(removed, key=lambda p: p.path):
         rel = _relative(param.path, path1)
-        table.add_row("removed", rel, _truncate(param.value), "")
+        if show_values:
+            table.add_row("removed", rel, _truncate(param.value), "")
+        else:
+            table.add_row("removed", rel)
 
     for param in sorted(added, key=lambda p: p.path):
         rel = _relative(param.path, path2)
-        table.add_row("added", rel, "", _truncate(param.value))
+        if show_values:
+            table.add_row("added", rel, "", _truncate(param.value))
+        else:
+            table.add_row("added", rel)
 
     for old, new in sorted(changed, key=lambda pair: pair[0].path):
         rel = _relative(old.path, path1)
-        table.add_row("changed", rel, _truncate(old.value), _truncate(new.value))
+        if show_values:
+            table.add_row("changed", rel, _truncate(old.value), _truncate(new.value))
+        else:
+            table.add_row("changed", rel)
 
     return table
 

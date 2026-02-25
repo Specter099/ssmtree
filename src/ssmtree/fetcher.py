@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 from ssmtree.models import Parameter
@@ -12,14 +14,27 @@ from ssmtree.models import Parameter
 if TYPE_CHECKING:
     from mypy_boto3_ssm import SSMClient
 
+_ARN_RE = re.compile(r"arn:aws[a-zA-Z-]*:[a-zA-Z0-9-]+:\S+")
+_ACCOUNT_RE = re.compile(r"\b\d{12}\b")
+
 
 class FetchError(Exception):
     """Raised when the SSM API call fails."""
 
 
+def _sanitize_error(msg: str) -> str:
+    """Strip ARNs and AWS account IDs from error messages."""
+    msg = _ARN_RE.sub("arn:***", msg)
+    msg = _ACCOUNT_RE.sub("***", msg)
+    return msg
+
+
+_RETRY_CONFIG = Config(retries={"max_attempts": 5, "mode": "adaptive"})
+
+
 def _make_client(profile: str | None, region: str | None) -> SSMClient:
     session = boto3.Session(profile_name=profile, region_name=region)
-    return session.client("ssm")  # type: ignore[return-value]
+    return session.client("ssm", config=_RETRY_CONFIG)  # type: ignore[return-value]
 
 
 def fetch_parameters(
@@ -72,6 +87,7 @@ def fetch_parameters(
                 break
             kwargs["NextToken"] = next_token
     except (ClientError, BotoCoreError) as exc:
-        raise FetchError(f"Failed to fetch parameters from SSM: {exc}") from exc
+        sanitized = _sanitize_error(str(exc))
+        raise FetchError(f"Failed to fetch parameters from SSM: {sanitized}") from exc
 
     return sorted(params, key=lambda p: p.path)
