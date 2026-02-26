@@ -90,11 +90,18 @@ class TestMainCommand:
         assert len(secure) == 1
         assert secure[0]["value"] == "FAKE-test-password"
 
-    def test_values_hidden_by_default(self, runner):
+    def test_values_shown_by_default(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
             result = runner.invoke(main, ["/app/prod"])
         assert result.exit_code == 0
-        assert "prod-host" not in result.output
+        assert "prod-host" in result.output
+
+    def test_secure_string_redacted_by_default(self, runner):
+        with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
+            result = runner.invoke(main, ["/app/prod"])
+        assert result.exit_code == 0
+        assert "[redacted]" in result.output
+        assert "FAKE-test-password" not in result.output
 
     def test_show_values(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
