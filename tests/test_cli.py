@@ -143,6 +143,34 @@ class TestMainCommand:
         result = runner.invoke(main, [" "])
         assert result.exit_code != 0
 
+    def test_decrypt_after_path_is_parsed(self, runner):
+        """--decrypt placed after PATH must be parsed, not silently ignored."""
+        with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS) as mock_fetch:
+            result = runner.invoke(main, ["/app/prod", "--decrypt"])
+        assert result.exit_code == 0
+        assert mock_fetch.call_args[1]["decrypt"] is True
+
+    def test_decrypt_after_path_reveals_secure_string(self, runner):
+        """--decrypt after PATH should show the value, not [redacted]."""
+        with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
+            result = runner.invoke(main, ["/app/prod", "--decrypt"])
+        assert result.exit_code == 0
+        assert "[redacted]" not in result.output
+        assert "FAKE-test-password" in result.output
+
+    def test_hide_values_after_path_is_parsed(self, runner):
+        """--hide-values placed after PATH must be parsed."""
+        with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
+            result = runner.invoke(main, ["/app/prod", "--hide-values"])
+        assert result.exit_code == 0
+        assert "prod-host" not in result.output
+
+    def test_filter_after_path_is_parsed(self, runner):
+        """--filter placed after PATH must be parsed."""
+        with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
+            result = runner.invoke(main, ["/app/prod", "--filter", "*/db/*"])
+        assert result.exit_code == 0
+
 
 class TestDiffCommand:
     def test_diff_help(self, runner):

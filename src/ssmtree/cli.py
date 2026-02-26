@@ -82,7 +82,10 @@ class _DefaultPathGroup(click.Group):
         else:
             # PATH mode: let the option parser consume group options, then
             # collect the remaining positional (PATH) in ctx.args.
+            # allow_interspersed_args=True lets options appear after the PATH
+            # positional (e.g. `ssmtree /app/prod --decrypt`).
             ctx.allow_extra_args = True
+            ctx.allow_interspersed_args = True
             rest = click.Command.parse_args(self, ctx, args)
             ctx._protected_args = []
             ctx.args = rest
