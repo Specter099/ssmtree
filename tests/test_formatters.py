@@ -160,7 +160,9 @@ class TestRenderDiff:
         added = _param("/b/token", value="AQICAHiA==", type_="SecureString")
         old = _param("/a/key", value="AQICAHiB==", type_="SecureString")
         new = _param("/b/key", value="AQICAHiC==", type_="SecureString")
-        table = render_diff([added], [removed], [(old, new)], "/a", "/b", show_values=True, decrypt=False)
+        table = render_diff(
+            [added], [removed], [(old, new)], "/a", "/b", show_values=True, decrypt=False
+        )
         output = _render_to_str(table)
         assert output.count("[redacted]") == 4
         assert "AQICAHiR==" not in output

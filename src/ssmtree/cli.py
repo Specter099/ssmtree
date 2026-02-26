@@ -274,7 +274,9 @@ def diff_cmd(
         if not added and not removed and not changed:
             console.print("[bold green]Namespaces are identical.[/]")
         else:
-            table = render_diff(added, removed, changed, path1, path2, show_values=show_values, decrypt=decrypt)
+            table = render_diff(
+                added, removed, changed, path1, path2, show_values=show_values, decrypt=decrypt
+            )
             console.print(table)
 
 

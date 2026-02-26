@@ -142,7 +142,9 @@ def render_diff(
     for old, new in sorted(changed, key=lambda pair: pair[0].path):
         rel = _relative(old.path, path1)
         if show_values:
-            table.add_row("changed", rel, Text(_display_value(old, decrypt)), Text(_display_value(new, decrypt)))
+            old_val = Text(_display_value(old, decrypt))
+            new_val = Text(_display_value(new, decrypt))
+            table.add_row("changed", rel, old_val, new_val)
         else:
             table.add_row("changed", rel)
 
