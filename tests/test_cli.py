@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 from click.testing import CliRunner
 
+from ssmtree import __version__
 from ssmtree.cli import main
 from ssmtree.models import Parameter
 
@@ -51,7 +52,7 @@ class TestMainCommand:
     def test_version(self, runner):
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.1.0" in result.output
+        assert __version__ in result.output
 
     def test_tree_output(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
