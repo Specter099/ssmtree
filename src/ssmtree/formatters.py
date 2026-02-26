@@ -101,6 +101,7 @@ def render_diff(
     path1: str,
     path2: str,
     show_values: bool = False,
+    decrypt: bool = False,
 ) -> Table:
     """Render a diff table between two SSM namespaces.
 
@@ -111,6 +112,8 @@ def render_diff(
         path1:       Source namespace label.
         path2:       Target namespace label.
         show_values: When *False*, parameter values are hidden in the table.
+        decrypt:     When *True*, SecureString values are shown as-is; when *False*,
+            they are replaced with ``[redacted]``.
 
     Returns:
         A :class:`rich.table.Table`.
@@ -125,21 +128,23 @@ def render_diff(
     for param in sorted(removed, key=lambda p: p.path):
         rel = _relative(param.path, path1)
         if show_values:
-            table.add_row("removed", rel, _truncate(param.value), "")
+            table.add_row("removed", rel, Text(_display_value(param, decrypt)), Text(""))
         else:
             table.add_row("removed", rel)
 
     for param in sorted(added, key=lambda p: p.path):
         rel = _relative(param.path, path2)
         if show_values:
-            table.add_row("added", rel, "", _truncate(param.value))
+            table.add_row("added", rel, Text(""), Text(_display_value(param, decrypt)))
         else:
             table.add_row("added", rel)
 
     for old, new in sorted(changed, key=lambda pair: pair[0].path):
         rel = _relative(old.path, path1)
         if show_values:
-            table.add_row("changed", rel, _truncate(old.value), _truncate(new.value))
+            old_val = Text(_display_value(old, decrypt))
+            new_val = Text(_display_value(new, decrypt))
+            table.add_row("changed", rel, old_val, new_val)
         else:
             table.add_row("changed", rel)
 

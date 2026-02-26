@@ -146,12 +146,38 @@ class TestRenderDiff:
         assert "secret-new" not in output
 
     def test_diff_shows_values_when_requested(self):
+        # String params — values always shown when show_values=True
         old = _param("/a/key", value="secret-old")
         new = _param("/b/key", value="secret-new")
         table = render_diff([], [], [(old, new)], "/a", "/b", show_values=True)
         output = _render_to_str(table)
         assert "secret-old" in output
         assert "secret-new" in output
+
+    def test_diff_redacts_secure_strings_without_decrypt(self):
+        # All three status types should show [redacted] for SecureString without --decrypt
+        removed = _param("/a/pw", value="AQICAHiR==", type_="SecureString")
+        added = _param("/b/token", value="AQICAHiA==", type_="SecureString")
+        old = _param("/a/key", value="AQICAHiB==", type_="SecureString")
+        new = _param("/b/key", value="AQICAHiC==", type_="SecureString")
+        table = render_diff(
+            [added], [removed], [(old, new)], "/a", "/b", show_values=True, decrypt=False
+        )
+        output = _render_to_str(table)
+        assert output.count("[redacted]") == 4
+        assert "AQICAHiR==" not in output
+        assert "AQICAHiA==" not in output
+        assert "AQICAHiB==" not in output
+        assert "AQICAHiC==" not in output
+
+    def test_diff_shows_secure_string_values_when_decrypted(self):
+        old = _param("/a/key", value="plaintext-old", type_="SecureString")
+        new = _param("/b/key", value="plaintext-new", type_="SecureString")
+        table = render_diff([], [], [(old, new)], "/a", "/b", show_values=True, decrypt=True)
+        output = _render_to_str(table)
+        assert "plaintext-old" in output
+        assert "plaintext-new" in output
+        assert "[redacted]" not in output
 
 
 class TestRenderCopyPlan:
