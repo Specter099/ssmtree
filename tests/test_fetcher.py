@@ -131,6 +131,54 @@ def test_fetch_invalid_region_raises_fetch_error(monkeypatch):
         fetch_parameters("/app")
 
 
+@mock_aws
+def test_fetch_exact_leaf_parameter():
+    """get_parameters_by_path never returns a param AT the prefix; fallback should find it."""
+    client = boto3.client("ssm", region_name="us-east-1")
+    client.put_parameter(Name="/test", Value="leaf-value", Type="String")
+
+    params = fetch_parameters("/test")
+
+    assert len(params) == 1
+    assert params[0].path == "/test"
+    assert params[0].name == "test"
+    assert params[0].value == "leaf-value"
+
+
+@mock_aws
+def test_fetch_exact_leaf_not_returned_when_children_also_exist():
+    """When /prefix has both itself and children, both should be returned."""
+    client = boto3.client("ssm", region_name="us-east-1")
+    client.put_parameter(Name="/app", Value="root-value", Type="String")
+    client.put_parameter(Name="/app/key", Value="child-value", Type="String")
+
+    params = fetch_parameters("/app")
+    paths = {p.path for p in params}
+
+    assert "/app" in paths
+    assert "/app/key" in paths
+
+
+@mock_aws
+def test_fetch_nonexistent_leaf_returns_empty():
+    """Querying a path that doesn't exist should return empty list, not raise."""
+    params = fetch_parameters("/does/not/exist")
+    assert params == []
+
+
+@mock_aws
+def test_fetch_exact_leaf_secure_string():
+    """Fallback get_parameter should respect the decrypt flag for SecureString."""
+    client = boto3.client("ssm", region_name="us-east-1")
+    client.put_parameter(Name="/app/secret", Value="mysecret", Type="SecureString")
+
+    params = fetch_parameters("/app/secret", decrypt=False)
+
+    assert len(params) == 1
+    assert params[0].type == "SecureString"
+    assert params[0].path == "/app/secret"
+
+
 class TestSanitizeError:
     def test_strips_arns(self):
         msg = "Error with arn:aws:ssm:us-east-1:123456789012:parameter/foo"
