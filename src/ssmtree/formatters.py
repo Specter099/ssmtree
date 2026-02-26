@@ -17,7 +17,17 @@ def _truncate(value: str) -> str:
     return value[:_MAX_VALUE_LEN] + "…"
 
 
-def _param_label(param: Parameter, show_values: bool) -> Text:
+_REDACTED_LABEL = "[redacted]"
+
+
+def _display_value(param: Parameter, decrypt: bool) -> str:
+    """Return the value to display, or the redacted placeholder for undecrypted SecureStrings."""
+    if param.is_secure and not decrypt:
+        return _REDACTED_LABEL
+    return _truncate(param.value)
+
+
+def _param_label(param: Parameter, show_values: bool, decrypt: bool = False) -> Text:
     """Build a Rich :class:`Text` label for a parameter leaf."""
     if param.is_secure:
         name_style = "bold yellow"
@@ -34,41 +44,42 @@ def _param_label(param: Parameter, show_values: bool) -> Text:
     label.append(f" {type_tag}", style="dim")
 
     if show_values:
-        if param.is_secure and param.value == "":
-            label.append("  ***", style="dim red")
-        else:
-            label.append(f"  {_truncate(param.value)}", style="italic")
+        display = _display_value(param, decrypt)
+        style = "dim red" if display == _REDACTED_LABEL else "italic"
+        label.append(f"  {display}", style=style)
 
     return label
 
 
-def _add_node(rich_tree: Tree, node: TreeNode, show_values: bool) -> None:
+def _add_node(rich_tree: Tree, node: TreeNode, show_values: bool, decrypt: bool = False) -> None:
     """Recursively add *node*'s children to *rich_tree*."""
     for child in sorted(node.children.values(), key=lambda n: n.name):
         if child.is_namespace:
             # Namespace node — bold blue, may also carry a parameter
             branch_label = Text(child.name, style="bold blue")
             if child.parameter is not None and show_values:
-                branch_label.append(
-                    f"  ({_truncate(child.parameter.value)})", style="dim italic"
-                )
+                display = _display_value(child.parameter, decrypt)
+                style = "dim red italic" if display == _REDACTED_LABEL else "dim italic"
+                branch_label.append(f"  ({display})", style=style)
             branch = rich_tree.add(branch_label)
-            _add_node(branch, child, show_values)
+            _add_node(branch, child, show_values, decrypt)
         else:
             # Pure leaf node — must have a parameter
             if child.parameter is not None:
-                rich_tree.add(_param_label(child.parameter, show_values))
+                rich_tree.add(_param_label(child.parameter, show_values, decrypt))
             else:
                 # Orphan namespace with no param and no children (shouldn't happen)
                 rich_tree.add(Text(child.name, style="dim"))
 
 
-def render_tree(root: TreeNode, show_values: bool = True) -> Tree:
+def render_tree(root: TreeNode, show_values: bool = True, decrypt: bool = False) -> Tree:
     """Render the SSM parameter tree using Rich.
 
     Args:
         root: Root :class:`TreeNode` (as returned by :func:`~ssmtree.tree.build_tree`).
-        show_values: When *False*, parameter values are hidden.
+        show_values: When *False*, parameter values are hidden entirely.
+        decrypt: When *True*, SecureString values are shown as-is; when *False*,
+            they are replaced with ``[redacted]``.
 
     Returns:
         A :class:`rich.tree.Tree` ready to be printed.
@@ -77,9 +88,9 @@ def render_tree(root: TreeNode, show_values: bool = True) -> Tree:
 
     # If root itself is a parameter, show it
     if root.parameter is not None:
-        rich_root.add(_param_label(root.parameter, show_values))
+        rich_root.add(_param_label(root.parameter, show_values, decrypt))
 
-    _add_node(rich_root, root, show_values)
+    _add_node(rich_root, root, show_values, decrypt)
     return rich_root
 
 

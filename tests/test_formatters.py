@@ -76,17 +76,28 @@ class TestRenderTree:
         output = _render_to_str(render_tree(root, show_values=False))
         assert "myvalue" not in output
 
-    def test_secure_string_shows_stars_when_value_empty(self):
-        params = [_param("/app/secret", value="", type_="SecureString")]
+    def test_secure_string_shows_redacted_without_decrypt(self):
+        # Simulates the common case: API returns ciphertext when WithDecryption=False.
+        # The formatter should always show [redacted] for SecureString when decrypt=False.
+        params = [_param("/app/secret", value="AQICAHi+ciphertext==", type_="SecureString")]
         root = build_tree(params, root_path="/app")
-        output = _render_to_str(render_tree(root, show_values=True))
-        assert "***" in output
+        output = _render_to_str(render_tree(root, show_values=True, decrypt=False))
+        assert "[redacted]" in output
+        assert "AQICAHi+ciphertext==" not in output
+
+    def test_secure_string_hides_value_entirely_when_show_values_false(self):
+        params = [_param("/app/secret", value="AQICAHi+ciphertext==", type_="SecureString")]
+        root = build_tree(params, root_path="/app")
+        output = _render_to_str(render_tree(root, show_values=False, decrypt=False))
+        assert "[redacted]" not in output
+        assert "AQICAHi+ciphertext==" not in output
 
     def test_secure_string_shows_value_when_decrypted(self):
         params = [_param("/app/secret", value="decrypted-value", type_="SecureString")]
         root = build_tree(params, root_path="/app")
-        output = _render_to_str(render_tree(root, show_values=True))
+        output = _render_to_str(render_tree(root, show_values=True, decrypt=True))
         assert "decrypted-value" in output
+        assert "[redacted]" not in output
 
     def test_namespace_node_appears_in_output(self):
         params = [_param("/app/db/host")]

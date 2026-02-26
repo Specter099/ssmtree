@@ -179,7 +179,7 @@ def main(
         ]
         click.echo(json.dumps(data, indent=2, default=str))
     else:
-        rich_tree = render_tree(tree, show_values=show_values)
+        rich_tree = render_tree(tree, show_values=show_values, decrypt=decrypt)
         console.print(rich_tree)
 
 

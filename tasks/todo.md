@@ -31,6 +31,10 @@
 ## Phase 5: CI
 - [x] `.github/workflows/ci.yml` — lint + test on push/PR
 
+## Backlog
+
+- [x] Show `[redacted]` for `SecureString` parameter values in tree output to make it clear to the user that the value is sensitive and not displayed (unless `--decrypt` is passed)
+
 ## CLI Usage
 
 ```bash
