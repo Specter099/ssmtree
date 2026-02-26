@@ -104,8 +104,8 @@ class _DefaultPathGroup(click.Group):
 )
 @click.option(
     "--show-values/--hide-values",
-    default=False,
-    help="Show or hide parameter values (default: hide).",
+    default=True,
+    help="Show or hide parameter values (default: show; SecureStrings shown as [redacted]).",
 )
 @click.option(
     "--output",
@@ -137,7 +137,8 @@ def main(
     \b
     Examples:
       ssmtree /app/prod
-      ssmtree --decrypt --show-values /app/prod
+      ssmtree --decrypt /app/prod
+      ssmtree --hide-values /app/prod
       ssmtree --filter "*db*" /app
       ssmtree --output json /app/prod
       ssmtree --output json --include-secrets /app/prod
@@ -191,8 +192,8 @@ def main(
 @click.option("--region", default=None, help="AWS region.")
 @click.option(
     "--show-values/--hide-values",
-    default=False,
-    help="Show or hide parameter values in diff (default: hide).",
+    default=True,
+    help="Show or hide parameter values in diff (default: show; SecureStrings are [redacted]).",
 )
 @click.option(
     "--include-secrets",
@@ -221,7 +222,7 @@ def diff_cmd(
     \b
     Examples:
       ssmtree diff /app/prod /app/staging
-      ssmtree diff --decrypt --show-values /app/prod /app/staging
+      ssmtree diff --decrypt /app/prod /app/staging
       ssmtree diff --decrypt --output json --include-secrets /app/prod /app/staging
     """
     _validate_path(path1)
