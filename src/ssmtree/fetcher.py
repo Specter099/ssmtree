@@ -90,4 +90,38 @@ def fetch_parameters(
         sanitized = _sanitize_error(str(exc))
         raise FetchError(f"Failed to fetch parameters from SSM: {sanitized}") from exc
 
+    # get_parameters_by_path never returns a parameter AT the prefix path itself
+    # (only parameters under it).  Try get_parameter as a fallback so that
+    # e.g. `ssmtree /app/db/password` works when that is a leaf parameter.
+    if prefix != "/":
+        existing_paths = {p.path for p in params}
+        if prefix not in existing_paths:
+            try:
+                resp = client.get_parameter(Name=prefix, WithDecryption=decrypt)
+                item = resp["Parameter"]
+                path = item["Name"]
+                segments = [s for s in path.split("/") if s]
+                name = segments[-1] if segments else path
+                params.append(
+                    Parameter(
+                        path=path,
+                        name=name,
+                        value=item.get("Value", ""),
+                        type=item.get("Type", "String"),
+                        version=item.get("Version", 0),
+                        last_modified=item.get("LastModifiedDate"),
+                    )
+                )
+            except ClientError as exc:
+                if exc.response["Error"]["Code"] != "ParameterNotFound":
+                    sanitized = _sanitize_error(str(exc))
+                    raise FetchError(
+                        f"Failed to fetch parameters from SSM: {sanitized}"
+                    ) from exc
+            except BotoCoreError as exc:
+                sanitized = _sanitize_error(str(exc))
+                raise FetchError(
+                    f"Failed to fetch parameters from SSM: {sanitized}"
+                ) from exc
+
     return sorted(params, key=lambda p: p.path)
