@@ -126,6 +126,22 @@ class TestRenderDiff:
         output = _render_to_str(table)
         assert "changed" in output
 
+    def test_diff_hides_values_by_default(self):
+        old = _param("/a/key", value="secret-old")
+        new = _param("/b/key", value="secret-new")
+        table = render_diff([], [], [(old, new)], "/a", "/b")
+        output = _render_to_str(table)
+        assert "secret-old" not in output
+        assert "secret-new" not in output
+
+    def test_diff_shows_values_when_requested(self):
+        old = _param("/a/key", value="secret-old")
+        new = _param("/b/key", value="secret-new")
+        table = render_diff([], [], [(old, new)], "/a", "/b", show_values=True)
+        output = _render_to_str(table)
+        assert "secret-old" in output
+        assert "secret-new" in output
+
 
 class TestRenderCopyPlan:
     def test_returns_table(self):

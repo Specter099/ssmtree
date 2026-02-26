@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 
 import boto3
@@ -10,7 +11,7 @@ import click
 from rich.console import Console
 
 from ssmtree import __version__
-from ssmtree.copier import copy_namespace
+from ssmtree.copier import CopyError, copy_namespace
 from ssmtree.differ import diff_namespaces
 from ssmtree.fetcher import FetchError, fetch_parameters
 from ssmtree.formatters import render_copy_plan, render_diff, render_tree
@@ -18,10 +19,33 @@ from ssmtree.tree import build_tree, filter_tree
 
 console = Console()
 
+_REDACTED = "***REDACTED***"
+_SSM_PATH_RE = re.compile(r"^/[a-zA-Z0-9_./-]+$")
+
 
 def _abort(msg: str) -> None:
     console.print(f"[bold red]Error:[/] {msg}")
     sys.exit(1)
+
+
+def _validate_path(path: str) -> None:
+    """Validate that *path* looks like a valid SSM parameter path."""
+    if path == "/":
+        return
+    if not path or not path.strip():
+        _abort("Path must not be empty.")
+    if not _SSM_PATH_RE.match(path):
+        _abort(
+            f"Invalid SSM path {path!r}. "
+            "Paths must start with '/' and contain only alphanumerics, '.', '_', '-', or '/'."
+        )
+
+
+def _redact_value(param_type: str, value: str, include_secrets: bool) -> str:
+    """Return value or redacted placeholder for SecureString parameters."""
+    if param_type == "SecureString" and not include_secrets:
+        return _REDACTED
+    return value
 
 
 class _DefaultPathGroup(click.Group):
@@ -80,14 +104,20 @@ class _DefaultPathGroup(click.Group):
 )
 @click.option(
     "--show-values/--hide-values",
-    default=True,
-    help="Show or hide parameter values (default: show).",
+    default=False,
+    help="Show or hide parameter values (default: hide).",
 )
 @click.option(
     "--output",
     type=click.Choice(["tree", "json"]),
     default="tree",
     help="Output format (default: tree).",
+)
+@click.option(
+    "--include-secrets",
+    is_flag=True,
+    default=False,
+    help="Include SecureString values in JSON output (default: redacted).",
 )
 @click.version_option(__version__, "--version", "-V")
 def main(
@@ -98,6 +128,7 @@ def main(
     filter_pattern: str | None,
     show_values: bool,
     output: str,
+    include_secrets: bool,
 ) -> None:
     """Render AWS SSM Parameter Store as a colorized terminal tree.
 
@@ -106,15 +137,17 @@ def main(
     \b
     Examples:
       ssmtree /app/prod
-      ssmtree --decrypt /app/prod
+      ssmtree --decrypt --show-values /app/prod
       ssmtree --filter "*db*" /app
       ssmtree --output json /app/prod
+      ssmtree --output json --include-secrets /app/prod
     """
     if ctx.invoked_subcommand is not None:
         return
 
     # PATH is an optional trailing positional arg collected in ctx.args
     path = ctx.args[0] if ctx.args else "/"
+    _validate_path(path)
 
     try:
         params = fetch_parameters(path, decrypt=decrypt, profile=profile, region=region)
@@ -129,11 +162,16 @@ def main(
         tree = build_tree(params, root_path=path)
 
     if output == "json":
+        if decrypt and include_secrets:
+            console.print(
+                "[bold yellow]WARNING:[/] Secret values will be included in output.",
+                stderr=True,
+            )
         data = [
             {
                 "path": p.path,
                 "name": p.name,
-                "value": p.value,
+                "value": _redact_value(p.type, p.value, include_secrets),
                 "type": p.type,
                 "version": p.version,
             }
@@ -152,6 +190,17 @@ def main(
 @click.option("--profile", default=None, help="AWS named profile.")
 @click.option("--region", default=None, help="AWS region.")
 @click.option(
+    "--show-values/--hide-values",
+    default=False,
+    help="Show or hide parameter values in diff (default: hide).",
+)
+@click.option(
+    "--include-secrets",
+    is_flag=True,
+    default=False,
+    help="Include SecureString values in JSON output (default: redacted).",
+)
+@click.option(
     "--output",
     type=click.Choice(["table", "json"]),
     default="table",
@@ -163,6 +212,8 @@ def diff_cmd(
     decrypt: bool,
     profile: str | None,
     region: str | None,
+    show_values: bool,
+    include_secrets: bool,
     output: str,
 ) -> None:
     """Diff two SSM parameter namespaces.
@@ -170,8 +221,12 @@ def diff_cmd(
     \b
     Examples:
       ssmtree diff /app/prod /app/staging
-      ssmtree diff --decrypt /app/prod /app/staging --output json
+      ssmtree diff --decrypt --show-values /app/prod /app/staging
+      ssmtree diff --decrypt --output json --include-secrets /app/prod /app/staging
     """
+    _validate_path(path1)
+    _validate_path(path2)
+
     try:
         params1 = fetch_parameters(path1, decrypt=decrypt, profile=profile, region=region)
         params2 = fetch_parameters(path2, decrypt=decrypt, profile=profile, region=region)
@@ -182,14 +237,33 @@ def diff_cmd(
     added, removed, changed = diff_namespaces(params1, params2, path1, path2)
 
     if output == "json":
+        if decrypt and include_secrets:
+            console.print(
+                "[bold yellow]WARNING:[/] Secret values will be included in output.",
+                stderr=True,
+            )
         data = {
-            "added": [{"path": p.path, "value": p.value, "type": p.type} for p in added],
-            "removed": [{"path": p.path, "value": p.value, "type": p.type} for p in removed],
+            "added": [
+                {
+                    "path": p.path,
+                    "value": _redact_value(p.type, p.value, include_secrets),
+                    "type": p.type,
+                }
+                for p in added
+            ],
+            "removed": [
+                {
+                    "path": p.path,
+                    "value": _redact_value(p.type, p.value, include_secrets),
+                    "type": p.type,
+                }
+                for p in removed
+            ],
             "changed": [
                 {
                     "path": old.path,
-                    "old_value": old.value,
-                    "new_value": new.value,
+                    "old_value": _redact_value(old.type, old.value, include_secrets),
+                    "new_value": _redact_value(new.type, new.value, include_secrets),
                     "type": old.type,
                 }
                 for old, new in changed
@@ -200,7 +274,7 @@ def diff_cmd(
         if not added and not removed and not changed:
             console.print("[bold green]Namespaces are identical.[/]")
         else:
-            table = render_diff(added, removed, changed, path1, path2)
+            table = render_diff(added, removed, changed, path1, path2, show_values=show_values)
             console.print(table)
 
 
@@ -223,6 +297,7 @@ def diff_cmd(
 @click.option(
     "--kms-key-id", default=None, help="KMS key for SecureString parameters at destination."
 )
+@click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt.")
 def copy_cmd(
     source: str,
     dest: str,
@@ -232,15 +307,19 @@ def copy_cmd(
     overwrite: bool,
     dry_run: bool,
     kms_key_id: str | None,
+    yes: bool,
 ) -> None:
     """Copy all SSM parameters from SOURCE to DEST namespace.
 
     \b
     Examples:
       ssmtree copy --dry-run /app/prod /app/staging
-      ssmtree copy --overwrite /app/prod /app/staging
+      ssmtree copy --yes --overwrite /app/prod /app/staging
       ssmtree copy --decrypt --kms-key-id alias/my-key /app/prod /app/staging
     """
+    _validate_path(source)
+    _validate_path(dest)
+
     try:
         params = fetch_parameters(source, decrypt=decrypt, profile=profile, region=region)
     except FetchError as exc:
@@ -257,17 +336,35 @@ def copy_cmd(
         console.print(f"\n[dim]Dry run: {len(params)} parameter(s) would be copied.[/]")
         return
 
+    if not yes:
+        if overwrite:
+            console.print(
+                f"[bold yellow]WARNING:[/] --overwrite is enabled. "
+                f"Existing parameters under {dest} will be replaced."
+            )
+        if not click.confirm(f"Copy {len(params)} parameter(s) to {dest}?"):
+            console.print("[dim]Aborted.[/]")
+            return
+
     session = boto3.Session(profile_name=profile, region_name=region)
     ssm_client = session.client("ssm")
 
-    written = copy_namespace(
-        source_params=params,
-        source_prefix=source,
-        dest_prefix=dest,
-        ssm_client=ssm_client,
-        overwrite=overwrite,
-        dry_run=False,
-        kms_key_id=kms_key_id,
-    )
+    try:
+        written, failed = copy_namespace(
+            source_params=params,
+            source_prefix=source,
+            dest_prefix=dest,
+            ssm_client=ssm_client,
+            overwrite=overwrite,
+            dry_run=False,
+            kms_key_id=kms_key_id,
+        )
+    except CopyError as exc:
+        _abort(str(exc))
+        return
 
     console.print(f"[bold green]Copied {len(written)} parameter(s)[/] from {source} → {dest}")
+    if failed:
+        console.print(f"[bold red]Failed {len(failed)} parameter(s):[/]")
+        for path, err in failed:
+            console.print(f"  {path}: {err}")

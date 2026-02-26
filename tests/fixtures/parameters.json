@@ -15,14 +15,14 @@
   },
   {
     "Name": "/app/prod/db/password",
-    "Value": "s3cr3t!",
+    "Value": "FAKE-test-password",
     "Type": "SecureString",
     "Version": 3,
     "LastModifiedDate": "2024-01-17T12:00:00Z"
   },
   {
     "Name": "/app/prod/api/key",
-    "Value": "api-key-prod-abc123",
+    "Value": "TEST-api-key-not-real",
     "Type": "SecureString",
     "Version": 1,
     "LastModifiedDate": "2024-01-18T09:00:00Z"
@@ -57,14 +57,14 @@
   },
   {
     "Name": "/app/staging/db/password",
-    "Value": "staging-pass",
+    "Value": "FAKE-staging-password",
     "Type": "SecureString",
     "Version": 1,
     "LastModifiedDate": "2024-01-15T10:00:00Z"
   },
   {
     "Name": "/app/staging/api/key",
-    "Value": "api-key-staging-xyz789",
+    "Value": "TEST-staging-key-not-real",
     "Type": "SecureString",
     "Version": 1,
     "LastModifiedDate": "2024-01-15T10:00:00Z"

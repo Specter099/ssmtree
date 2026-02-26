@@ -61,12 +61,13 @@ class TestCopyNamespace:
             _param("/prod/db/host", "host"),
             _param("/prod/db/port", "5432"),
         ]
-        result = copy_namespace(
+        written, failed = copy_namespace(
             params, "/prod", "/staging", client, dry_run=True
         )
-        assert "/staging/db/host" in result
-        assert "/staging/db/port" in result
-        assert len(result) == 2
+        assert "/staging/db/host" in written
+        assert "/staging/db/port" in written
+        assert len(written) == 2
+        assert failed == []
 
     @mock_aws
     def test_dry_run_does_not_write(self):
@@ -87,9 +88,10 @@ class TestCopyNamespace:
             _param("/prod/db/port", "5432"),
         ]
 
-        written = copy_namespace(params, "/prod", "/staging", client)
+        written, failed = copy_namespace(params, "/prod", "/staging", client)
 
         assert len(written) == 2
+        assert failed == []
         response = client.get_parameters_by_path(Path="/staging", Recursive=True)
         dest_names = {p["Name"] for p in response["Parameters"]}
         assert "/staging/db/host" in dest_names
@@ -100,8 +102,9 @@ class TestCopyNamespace:
         client = boto3.client("ssm", region_name="us-east-1")
         params = [_param("/prod/key", "my-special-value")]
 
-        copy_namespace(params, "/prod", "/staging", client)
+        written, failed = copy_namespace(params, "/prod", "/staging", client)
 
+        assert failed == []
         response = client.get_parameter(Name="/staging/key")
         assert response["Parameter"]["Value"] == "my-special-value"
 
@@ -110,8 +113,9 @@ class TestCopyNamespace:
         client = boto3.client("ssm", region_name="us-east-1")
         params = [_param("/prod/key", "v", type_="StringList")]
 
-        copy_namespace(params, "/prod", "/staging", client)
+        written, failed = copy_namespace(params, "/prod", "/staging", client)
 
+        assert failed == []
         response = client.get_parameter(Name="/staging/key")
         assert response["Parameter"]["Type"] == "StringList"
 
@@ -120,9 +124,10 @@ class TestCopyNamespace:
         client = boto3.client("ssm", region_name="us-east-1")
         params = [_param("/prod/a"), _param("/prod/b")]
 
-        result = copy_namespace(params, "/prod", "/staging", client)
+        written, failed = copy_namespace(params, "/prod", "/staging", client)
 
-        assert set(result) == {"/staging/a", "/staging/b"}
+        assert set(written) == {"/staging/a", "/staging/b"}
+        assert failed == []
 
     @mock_aws
     def test_copy_overwrite_flag(self):
@@ -132,13 +137,15 @@ class TestCopyNamespace:
 
         params = [_param("/prod/key", "new")]
         # Should not raise even though param exists, because overwrite=True
-        copy_namespace(params, "/prod", "/staging", client, overwrite=True)
+        written, failed = copy_namespace(params, "/prod", "/staging", client, overwrite=True)
 
+        assert failed == []
         response = client.get_parameter(Name="/staging/key")
         assert response["Parameter"]["Value"] == "new"
 
     @mock_aws
     def test_empty_source_returns_empty(self):
         client = boto3.client("ssm", region_name="us-east-1")
-        result = copy_namespace([], "/prod", "/staging", client)
-        assert result == []
+        written, failed = copy_namespace([], "/prod", "/staging", client)
+        assert written == []
+        assert failed == []

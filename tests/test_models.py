@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from ssmtree.models import Parameter, TreeNode
 
 
@@ -42,6 +44,10 @@ class TestParameter:
         assert p.name == "c"
         assert p.value == "val"
         assert p.version == 42
+
+    def test_invalid_type_raises_value_error(self):
+        with pytest.raises(ValueError, match="Invalid parameter type"):
+            _make_param(type="InvalidType")
 
 
 class TestTreeNode:

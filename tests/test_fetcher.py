@@ -8,7 +8,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from ssmtree.fetcher import FetchError, fetch_parameters
+from ssmtree.fetcher import FetchError, _sanitize_error, fetch_parameters
 from ssmtree.models import Parameter
 
 
@@ -129,3 +129,22 @@ def test_fetch_invalid_region_raises_fetch_error(monkeypatch):
 
     with pytest.raises(FetchError):
         fetch_parameters("/app")
+
+
+class TestSanitizeError:
+    def test_strips_arns(self):
+        msg = "Error with arn:aws:ssm:us-east-1:123456789012:parameter/foo"
+        result = _sanitize_error(msg)
+        assert "123456789012" not in result
+        assert "arn:***" in result
+
+    def test_strips_account_ids(self):
+        msg = "Account 123456789012 does not have access"
+        result = _sanitize_error(msg)
+        assert "123456789012" not in result
+        assert "***" in result
+
+    def test_preserves_non_sensitive_content(self):
+        msg = "Access denied for GetParametersByPath"
+        result = _sanitize_error(msg)
+        assert result == msg

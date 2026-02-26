@@ -4,18 +4,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Literal
+
+PARAMETER_TYPES = ("String", "SecureString", "StringList")
+ParameterType = Literal["String", "SecureString", "StringList"]
 
 
 @dataclass
 class Parameter:
     """Represents a single SSM Parameter Store parameter."""
 
-    path: str          # full SSM path, e.g. /app/prod/db/password
-    name: str          # leaf segment only, e.g. "password"
-    value: str         # parameter value (may be "***" if SecureString not decrypted)
-    type: str          # "String" | "SecureString" | "StringList"
+    path: str              # full SSM path, e.g. /app/prod/db/password
+    name: str              # leaf segment only, e.g. "password"
+    value: str             # parameter value (may be "***" if SecureString not decrypted)
+    type: ParameterType    # "String" | "SecureString" | "StringList"
     version: int
     last_modified: datetime
+
+    def __post_init__(self) -> None:
+        if self.type not in PARAMETER_TYPES:
+            raise ValueError(
+                f"Invalid parameter type {self.type!r}; "
+                f"expected one of {PARAMETER_TYPES}"
+            )
 
     @property
     def is_secure(self) -> bool:

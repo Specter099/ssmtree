@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from botocore.exceptions import BotoCoreError, ClientError
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
@@ -11,6 +12,10 @@ from ssmtree.models import Parameter
 
 if TYPE_CHECKING:
     from mypy_boto3_ssm import SSMClient
+
+
+class CopyError(Exception):
+    """Raised when the entire copy operation cannot proceed."""
 
 
 def _rewrite_path(path: str, source_prefix: str, dest_prefix: str) -> str:
@@ -31,7 +36,7 @@ def copy_namespace(
     overwrite: bool = False,
     dry_run: bool = False,
     kms_key_id: str | None = None,
-) -> list[str]:
+) -> tuple[list[str], list[tuple[str, str]]]:
     """Copy all parameters from *source_prefix* to *dest_prefix*.
 
     Each parameter's path is rewritten: the *source_prefix* portion is
@@ -48,7 +53,11 @@ def copy_namespace(
                         Defaults to the account default CMK.
 
     Returns:
-        List of destination paths that were written (or would be written on dry-run).
+        A tuple ``(written, failed)`` where *written* is a list of successfully
+        written destination paths and *failed* is a list of ``(path, error_msg)``
+        tuples for parameters that could not be written.
+
+        On dry-run, returns ``(planned_paths, [])``.
     """
     planned: list[str] = []
     for param in sorted(source_params, key=lambda p: p.path):
@@ -56,10 +65,11 @@ def copy_namespace(
         planned.append(dest_path)
 
     if dry_run:
-        return planned
+        return planned, []
 
     console = Console()
     written: list[str] = []
+    failed: list[tuple[str, str]] = []
 
     with Progress(
         SpinnerColumn(),
@@ -83,8 +93,11 @@ def copy_namespace(
             if param.type == "SecureString" and kms_key_id:
                 put_kwargs["KeyId"] = kms_key_id
 
-            ssm_client.put_parameter(**put_kwargs)
-            written.append(dest_path)
+            try:
+                ssm_client.put_parameter(**put_kwargs)
+                written.append(dest_path)
+            except (ClientError, BotoCoreError) as exc:
+                failed.append((dest_path, str(exc)))
             progress.advance(task)
 
-    return written
+    return written, failed
