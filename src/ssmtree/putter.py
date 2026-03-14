@@ -54,7 +54,7 @@ def put_parameter(
     }
     if param_type == "SecureString" and kms_key_id:
         put_kwargs["KeyId"] = kms_key_id
-    if description:
+    if description is not None:
         put_kwargs["Description"] = description
 
     try:

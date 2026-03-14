@@ -12,6 +12,7 @@ from click.testing import CliRunner
 from ssmtree import __version__
 from ssmtree.cli import main
 from ssmtree.models import Parameter
+from ssmtree.putter import PutError
 
 
 def _param(path: str, value: str = "val", type_: str = "String") -> Parameter:
@@ -445,3 +446,41 @@ class TestPutCommand:
                     main, ["put", "--yes", "--type", "SecureString", "/app/prod/secret", "val"]
                 )
         assert mock_put.call_args[1]["param_type"] == "SecureString"
+
+    def test_put_type_string_list(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--yes", "--type", "StringList", "/app/prod/ips", "10.0.0.1,10.0.0.2"],
+                )
+        assert result.exit_code == 0
+        assert mock_put.call_args[1]["param_type"] == "StringList"
+
+    def test_put_secure_flag(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main, ["put", "--yes", "--secure", "/app/prod/secret", "s3cret"]
+                )
+        assert result.exit_code == 0
+        assert mock_put.call_args[1]["param_type"] == "SecureString"
+
+    def test_secure_flag_overrides_type_option(self, runner):
+        """--secure should override --type String to SecureString."""
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--yes", "--type", "String", "--secure", "/app/prod/key", "val"],
+                )
+        assert result.exit_code == 0
+        assert mock_put.call_args[1]["param_type"] == "SecureString"
+
+    def test_put_kms_key_id_without_secure_string_fails(self, runner):
+        result = runner.invoke(
+            main,
+            ["put", "--kms-key-id", "alias/key", "/app/prod/key", "val"],
+        )
+        assert result.exit_code != 0
+        assert "SecureString" in result.output

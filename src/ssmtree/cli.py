@@ -390,6 +390,7 @@ def copy_cmd(
     show_default=True,
     help="SSM parameter type.",
 )
+@click.option("--secure", is_flag=True, default=False, help="Shorthand for --type SecureString.")
 @click.option(
     "--overwrite/--no-overwrite",
     default=False,
@@ -404,6 +405,7 @@ def put_cmd(
     path: str,
     value: str,
     param_type: str,
+    secure: bool,
     overwrite: bool,
     kms_key_id: str | None,
     description: str | None,
@@ -419,11 +421,18 @@ def put_cmd(
     Examples:
       ssmtree put /app/prod/db/host my-host
       ssmtree put --type SecureString /app/prod/db/password my-secret
+      ssmtree put --secure /app/prod/db/password my-secret
       echo "my-secret" | ssmtree put --type SecureString /app/prod/db/password -
       ssmtree put --overwrite --yes /app/prod/db/host new-host
       ssmtree put --kms-key-id alias/my-key --type SecureString /app/prod/db/password -
     """
     _validate_path(path)
+
+    if secure:
+        param_type = "SecureString"
+
+    if kms_key_id and param_type != "SecureString":
+        _abort("--kms-key-id can only be used with SecureString parameters.")
 
     if value == "-":
         value = click.get_text_stream("stdin").read().rstrip("\n")
