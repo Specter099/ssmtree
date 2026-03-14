@@ -439,13 +439,13 @@ class TestPutCommand:
     # --- Security fix tests ---
 
     def test_put_root_path_rejected(self, runner):
-        """Fix #6: '/' must not be accepted as a put target."""
+        """'/' must not be accepted as a put target."""
         result = runner.invoke(main, ["put", "/", "val"])
         assert result.exit_code != 0
         assert "root" in result.output.lower()
 
     def test_put_stdin_reads_value(self, runner):
-        """Fix #1: --stdin reads the value from stdin."""
+        """--stdin reads the value from stdin."""
         with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
                 result = runner.invoke(
@@ -456,8 +456,21 @@ class TestPutCommand:
         assert result.exit_code == 0
         assert mock_put.call_args[1]["value"] == "my-secret-value"
 
-    def test_put_stdin_strips_trailing_newline(self, runner):
-        """Fix #1: trailing newline from piped input is stripped."""
+    def test_put_stdin_strips_exactly_one_trailing_newline(self, runner):
+        """Only one trailing newline is stripped (echo adds one)."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--stdin", "/app/prod/key"],
+                    input="value\n\n",
+                )
+        assert result.exit_code == 0
+        # The second \n should be preserved as part of the value.
+        assert mock_put.call_args[1]["value"] == "value\n"
+
+    def test_put_stdin_no_trailing_newline(self, runner):
+        """Input without a trailing newline is used as-is."""
         with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
                 result = runner.invoke(
@@ -468,8 +481,20 @@ class TestPutCommand:
         assert result.exit_code == 0
         assert mock_put.call_args[1]["value"] == "value-no-newline"
 
+    def test_put_stdin_multiline_value(self, runner):
+        """Multiline values from stdin are preserved (minus one trailing newline)."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--stdin", "/app/prod/key"],
+                    input="line1\nline2\nline3\n",
+                )
+        assert result.exit_code == 0
+        assert mock_put.call_args[1]["value"] == "line1\nline2\nline3"
+
     def test_put_stdin_and_positional_value_conflict(self, runner):
-        """Fix #1: cannot supply both --stdin and positional VALUE."""
+        """Cannot supply both --stdin and positional VALUE."""
         result = runner.invoke(
             main,
             ["put", "--stdin", "/app/prod/key", "extra-value"],
@@ -479,7 +504,7 @@ class TestPutCommand:
         assert "Cannot use both" in result.output
 
     def test_put_stdin_empty_fails(self, runner):
-        """Fix #1: empty stdin must produce an error."""
+        """Empty stdin must produce an error."""
         result = runner.invoke(
             main,
             ["put", "--stdin", "/app/prod/key"],
@@ -488,14 +513,24 @@ class TestPutCommand:
         assert result.exit_code != 0
         assert "No value" in result.output
 
+    def test_put_stdin_only_newline_fails(self, runner):
+        """Stdin containing only a newline (empty after strip) must fail."""
+        result = runner.invoke(
+            main,
+            ["put", "--stdin", "/app/prod/key"],
+            input="\n",
+        )
+        assert result.exit_code != 0
+        assert "No value" in result.output
+
     def test_put_no_value_and_no_stdin_fails(self, runner):
-        """Fix #1: omitting VALUE without --stdin must fail."""
+        """Omitting VALUE without --stdin must fail."""
         result = runner.invoke(main, ["put", "/app/prod/key"])
         assert result.exit_code != 0
         assert "Missing" in result.output or "VALUE" in result.output
 
     def test_put_secure_positional_warns(self, runner):
-        """Fix #1: passing a SecureString value as a CLI arg emits a warning."""
+        """Passing a SecureString value as a CLI arg emits a warning."""
         with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1):
                 result = runner.invoke(
@@ -507,7 +542,7 @@ class TestPutCommand:
         assert "shell history" in result.output or "process list" in result.output
 
     def test_put_secure_stdin_no_warning(self, runner):
-        """Fix #1: --stdin with --secure should NOT emit process list warning."""
+        """--stdin with --secure should NOT emit process list warning."""
         with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1):
                 result = runner.invoke(
@@ -519,7 +554,7 @@ class TestPutCommand:
         assert "process list" not in result.output
 
     def test_put_overwrite_prompts_without_yes(self, runner):
-        """Fix #3: --overwrite without --yes prompts for confirmation."""
+        """--overwrite without --yes prompts for confirmation."""
         with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1):
                 result = runner.invoke(
@@ -530,8 +565,20 @@ class TestPutCommand:
         assert result.exit_code == 0
         assert "Aborted" in result.output
 
+    def test_put_overwrite_declined_does_not_call_put(self, runner):
+        """--overwrite declined via prompt must NOT call put_parameter."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--overwrite", "/app/prod/key", "val"],
+                    input="n\n",
+                )
+        assert result.exit_code == 0
+        mock_put.assert_not_called()
+
     def test_put_overwrite_confirmed_proceeds(self, runner):
-        """Fix #3: --overwrite confirmed via prompt proceeds."""
+        """--overwrite confirmed via prompt proceeds."""
         with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=2) as mock_put:
                 result = runner.invoke(
@@ -542,8 +589,31 @@ class TestPutCommand:
         assert result.exit_code == 0
         mock_put.assert_called_once()
 
+    def test_put_overwrite_stdin_without_yes_fails(self, runner):
+        """--overwrite with --stdin requires --yes (cannot prompt on piped stdin)."""
+        result = runner.invoke(
+            main,
+            ["put", "--overwrite", "--stdin", "/app/prod/key"],
+            input="some-value\n",
+        )
+        assert result.exit_code != 0
+        assert "--yes" in result.output
+
+    def test_put_overwrite_stdin_with_yes_succeeds(self, runner):
+        """--overwrite with --stdin and --yes should work."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=2) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--overwrite", "--yes", "--stdin", "/app/prod/key"],
+                    input="new-value\n",
+                )
+        assert result.exit_code == 0
+        mock_put.assert_called_once()
+        assert mock_put.call_args[1]["value"] == "new-value"
+
     def test_put_uses_make_client(self, runner):
-        """Fix #5: put command uses the shared retry-configured client factory."""
+        """put command uses the shared retry-configured client factory."""
         with patch("ssmtree.cli.make_client") as mock_make:
             with patch("ssmtree.cli.put_parameter", return_value=1):
                 result = runner.invoke(
@@ -551,3 +621,95 @@ class TestPutCommand:
                 )
         assert result.exit_code == 0
         mock_make.assert_called_once()
+
+    def test_put_forwards_profile_and_region(self, runner):
+        """--profile and --region are forwarded to make_client."""
+        with patch("ssmtree.cli.make_client") as mock_make:
+            with patch("ssmtree.cli.put_parameter", return_value=1):
+                result = runner.invoke(
+                    main,
+                    ["put", "--profile", "myprofile", "--region", "eu-west-1",
+                     "/app/prod/key", "val"],
+                )
+        assert result.exit_code == 0
+        mock_make.assert_called_once_with("myprofile", "eu-west-1")
+
+    def test_put_overwrite_shows_updated(self, runner):
+        """Success message says 'Updated' when --overwrite is used."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=2):
+                result = runner.invoke(
+                    main,
+                    ["put", "--overwrite", "--yes", "/app/prod/key", "val"],
+                )
+        assert result.exit_code == 0
+        assert "Updated" in result.output
+
+    def test_put_create_shows_created(self, runner):
+        """Success message says 'Created' for new parameters."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1):
+                result = runner.invoke(
+                    main, ["put", "/app/prod/key", "val"]
+                )
+        assert result.exit_code == 0
+        assert "Created" in result.output
+
+    def test_put_description_none_by_default(self, runner):
+        """When --description is not provided, None is passed."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main, ["put", "/app/prod/key", "val"]
+                )
+        assert result.exit_code == 0
+        assert mock_put.call_args[1]["description"] is None
+
+    def test_put_secure_stdin_full_path(self, runner):
+        """Full integration: --secure --stdin reads value and sets SecureString."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--secure", "--stdin", "/app/prod/secret"],
+                    input="my-secret\n",
+                )
+        assert result.exit_code == 0
+        assert mock_put.call_args[1]["parameter_type"] == "SecureString"
+        assert mock_put.call_args[1]["value"] == "my-secret"
+        assert "SecureString" in result.output
+
+    def test_put_whitespace_only_value_is_accepted(self, runner):
+        """A value of only whitespace is technically valid for SSM."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main, ["put", "/app/prod/key", "   "]
+                )
+        assert result.exit_code == 0
+        assert mock_put.call_args[1]["value"] == "   "
+
+    def test_put_path_with_special_valid_chars(self, runner):
+        """Paths with dots, underscores, and hyphens are valid."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1):
+                result = runner.invoke(
+                    main, ["put", "/app/my-service_v2.0/key", "val"]
+                )
+        assert result.exit_code == 0
+
+    def test_put_path_with_invalid_chars_rejected(self, runner):
+        """Paths with spaces or special characters are rejected."""
+        result = runner.invoke(main, ["put", "/app/my service/key", "val"])
+        assert result.exit_code != 0
+
+    def test_put_no_overwrite_no_prompt(self, runner):
+        """Without --overwrite, no confirmation prompt is shown."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main, ["put", "/app/prod/key", "val"]
+                )
+        assert result.exit_code == 0
+        mock_put.assert_called_once()
+        assert "Overwrite" not in result.output
