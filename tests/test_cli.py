@@ -12,6 +12,7 @@ from click.testing import CliRunner
 from ssmtree import __version__
 from ssmtree.cli import main
 from ssmtree.models import Parameter
+from ssmtree.putter import PutError
 
 
 def _param(path: str, value: str = "val", type_: str = "String") -> Parameter:
@@ -295,3 +296,142 @@ class TestCopyCommand:
                     )
         assert result.exit_code == 0
         assert "Failed 1" in result.output
+
+
+class TestPutCommand:
+    def test_put_help(self, runner):
+        result = runner.invoke(main, ["put", "--help"])
+        assert result.exit_code == 0
+        assert "PATH" in result.output
+        assert "VALUE" in result.output
+
+    def test_put_string_parameter(self, runner):
+        with patch("ssmtree.cli.boto3") as mock_boto:
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main, ["put", "/app/prod/db/host", "prod-db.example.com"]
+                )
+        assert result.exit_code == 0
+        assert "Created" in result.output
+        assert "/app/prod/db/host" in result.output
+        mock_put.assert_called_once()
+        call_kwargs = mock_put.call_args
+        assert call_kwargs[1]["parameter_type"] == "String"
+
+    def test_put_secure_flag(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main, ["put", "--secure", "/app/prod/secret", "s3cret"]
+                )
+        assert result.exit_code == 0
+        assert "SecureString" in result.output
+        call_kwargs = mock_put.call_args
+        assert call_kwargs[1]["parameter_type"] == "SecureString"
+
+    def test_put_type_secure_string(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--type", "SecureString", "/app/prod/secret", "s3cret"],
+                )
+        assert result.exit_code == 0
+        call_kwargs = mock_put.call_args
+        assert call_kwargs[1]["parameter_type"] == "SecureString"
+
+    def test_put_type_string_list(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--type", "StringList", "/app/prod/ips", "10.0.0.1,10.0.0.2"],
+                )
+        assert result.exit_code == 0
+        call_kwargs = mock_put.call_args
+        assert call_kwargs[1]["parameter_type"] == "StringList"
+
+    def test_put_overwrite(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=2) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--overwrite", "/app/prod/key", "new-val"],
+                )
+        assert result.exit_code == 0
+        call_kwargs = mock_put.call_args
+        assert call_kwargs[1]["overwrite"] is True
+
+    def test_put_with_description(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--description", "Database host", "/app/prod/db/host", "val"],
+                )
+        assert result.exit_code == 0
+        call_kwargs = mock_put.call_args
+        assert call_kwargs[1]["description"] == "Database host"
+
+    def test_put_with_kms_key_id(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    [
+                        "put",
+                        "--secure",
+                        "--kms-key-id",
+                        "alias/my-key",
+                        "/app/prod/secret",
+                        "val",
+                    ],
+                )
+        assert result.exit_code == 0
+        call_kwargs = mock_put.call_args
+        assert call_kwargs[1]["kms_key_id"] == "alias/my-key"
+
+    def test_put_kms_key_id_without_secure_string_fails(self, runner):
+        result = runner.invoke(
+            main,
+            ["put", "--kms-key-id", "alias/key", "/app/prod/key", "val"],
+        )
+        assert result.exit_code != 0
+        assert "SecureString" in result.output
+
+    def test_put_invalid_path_exits_nonzero(self, runner):
+        result = runner.invoke(main, ["put", "no-leading-slash", "val"])
+        assert result.exit_code != 0
+
+    def test_put_error_exits_nonzero(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch(
+                "ssmtree.cli.put_parameter",
+                side_effect=PutError("ParameterAlreadyExists"),
+            ):
+                result = runner.invoke(
+                    main, ["put", "/app/prod/key", "val"]
+                )
+        assert result.exit_code != 0
+        assert "ParameterAlreadyExists" in result.output
+
+    def test_secure_flag_overrides_type_option(self, runner):
+        """--secure should override --type String to SecureString."""
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--type", "String", "--secure", "/app/prod/key", "val"],
+                )
+        assert result.exit_code == 0
+        call_kwargs = mock_put.call_args
+        assert call_kwargs[1]["parameter_type"] == "SecureString"
+
+    def test_put_shows_version_in_output(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=3):
+                result = runner.invoke(
+                    main, ["put", "/app/prod/key", "val"]
+                )
+        assert result.exit_code == 0
+        assert "version 3" in result.output

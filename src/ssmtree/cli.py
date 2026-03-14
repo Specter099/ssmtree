@@ -15,6 +15,7 @@ from ssmtree.copier import CopyError, copy_namespace
 from ssmtree.differ import diff_namespaces
 from ssmtree.fetcher import FetchError, fetch_parameters
 from ssmtree.formatters import render_copy_plan, render_diff, render_tree
+from ssmtree.putter import PutError, put_parameter
 from ssmtree.tree import build_tree, filter_tree
 
 console = Console()
@@ -374,3 +375,75 @@ def copy_cmd(
         console.print(f"[bold red]Failed {len(failed)} parameter(s):[/]")
         for path, err in failed:
             console.print(f"  {path}: {err}")
+
+
+@main.command("put")
+@click.argument("path")
+@click.argument("value")
+@click.option("--profile", default=None, help="AWS named profile.")
+@click.option("--region", default=None, help="AWS region.")
+@click.option(
+    "--type",
+    "param_type",
+    type=click.Choice(["String", "SecureString", "StringList"]),
+    default="String",
+    help="Parameter type (default: String).",
+)
+@click.option("--secure", is_flag=True, default=False, help="Shorthand for --type SecureString.")
+@click.option(
+    "--overwrite/--no-overwrite",
+    default=False,
+    help="Overwrite existing parameter (default: no).",
+)
+@click.option("--description", default=None, help="Parameter description.")
+@click.option(
+    "--kms-key-id", default=None, help="KMS key for SecureString encryption."
+)
+def put_cmd(
+    path: str,
+    value: str,
+    profile: str | None,
+    region: str | None,
+    param_type: str,
+    secure: bool,
+    overwrite: bool,
+    description: str | None,
+    kms_key_id: str | None,
+) -> None:
+    """Create or update an SSM parameter.
+
+    \b
+    Examples:
+      ssmtree put /app/prod/db/host "prod-db.example.com"
+      ssmtree put --secure /app/prod/db/password "s3cret"
+      ssmtree put --type SecureString --kms-key-id alias/my-key /app/prod/key "val"
+      ssmtree put --overwrite /app/prod/db/host "new-host.example.com"
+      ssmtree put --type StringList /app/prod/ips "10.0.0.1,10.0.0.2"
+    """
+    _validate_path(path)
+
+    if secure:
+        param_type = "SecureString"
+
+    if kms_key_id and param_type != "SecureString":
+        _abort("--kms-key-id can only be used with SecureString parameters.")
+
+    session = boto3.Session(profile_name=profile, region_name=region)
+    ssm_client = session.client("ssm")
+
+    try:
+        version = put_parameter(
+            path=path,
+            value=value,
+            parameter_type=param_type,  # type: ignore[arg-type]
+            ssm_client=ssm_client,
+            overwrite=overwrite,
+            description=description,
+            kms_key_id=kms_key_id,
+        )
+    except PutError as exc:
+        _abort(str(exc))
+        return
+
+    type_label = f"[bold cyan]{param_type}[/]" if param_type != "SecureString" else "[bold yellow]SecureString[/]"
+    console.print(f"[bold green]Created[/] {path} ({type_label}, version {version})")
