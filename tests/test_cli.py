@@ -81,11 +81,12 @@ class TestMainCommand:
 
     def test_json_output_includes_secrets_when_flagged(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
-            result = runner.invoke(
-                main, ["--output", "json", "--include-secrets", "/app/prod"]
-            )
+            result = runner.invoke(main, ["--output", "json", "--include-secrets", "/app/prod"])
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        assert "WARNING" in result.output
+        # Extract JSON portion (after the warning line)
+        json_start = result.output.index("[")
+        data = json.loads(result.output[json_start:])
         secure = [item for item in data if item["type"] == "SecureString"]
         assert len(secure) == 1
         assert secure[0]["value"] == "FAKE-test-password"
@@ -193,9 +194,7 @@ class TestDiffCommand:
 
     def test_diff_json_output(self, runner):
         with patch("ssmtree.cli.fetch_parameters", side_effect=[PROD_PARAMS, STAGING_PARAMS]):
-            result = runner.invoke(
-                main, ["diff", "--output", "json", "/app/prod", "/app/staging"]
-            )
+            result = runner.invoke(main, ["diff", "--output", "json", "/app/prod", "/app/staging"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "added" in data
@@ -206,9 +205,7 @@ class TestDiffCommand:
         prod = [_param("/prod/secret", "top-secret", "SecureString")]
         staging = [_param("/staging/secret", "also-secret", "SecureString")]
         with patch("ssmtree.cli.fetch_parameters", side_effect=[prod, staging]):
-            result = runner.invoke(
-                main, ["diff", "--output", "json", "/prod", "/staging"]
-            )
+            result = runner.invoke(main, ["diff", "--output", "json", "/prod", "/staging"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         for entry in data["changed"]:
@@ -227,18 +224,14 @@ class TestCopyCommand:
 
     def test_dry_run_shows_plan(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
-            result = runner.invoke(
-                main, ["copy", "--dry-run", "/app/prod", "/app/staging"]
-            )
+            result = runner.invoke(main, ["copy", "--dry-run", "/app/prod", "/app/staging"])
         assert result.exit_code == 0
         assert "Dry run" in result.output or "dry" in result.output.lower()
 
     def test_dry_run_does_not_call_boto3(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
             with patch("ssmtree.cli.boto3") as mock_boto:
-                result = runner.invoke(
-                    main, ["copy", "--dry-run", "/app/prod", "/app/staging"]
-                )
+                result = runner.invoke(main, ["copy", "--dry-run", "/app/prod", "/app/staging"])
         assert result.exit_code == 0
         # boto3.Session should NOT have been called on dry run
         mock_boto.Session.assert_not_called()
@@ -256,9 +249,7 @@ class TestCopyCommand:
                     "ssmtree.cli.copy_namespace",
                     return_value=(["/staging/a"], []),
                 ) as mock_copy:
-                    result = runner.invoke(
-                        main, ["copy", "--yes", "/app/prod", "/app/staging"]
-                    )
+                    result = runner.invoke(main, ["copy", "--yes", "/app/prod", "/app/staging"])
         assert result.exit_code == 0
         mock_copy.assert_called_once()
 
@@ -270,9 +261,7 @@ class TestCopyCommand:
                     return_value=(["/staging/a"], []),
                 ):
                     # Respond 'n' to the confirmation prompt
-                    result = runner.invoke(
-                        main, ["copy", "/app/prod", "/app/staging"], input="n\n"
-                    )
+                    result = runner.invoke(main, ["copy", "/app/prod", "/app/staging"], input="n\n")
         assert result.exit_code == 0
         assert "Aborted" in result.output
 
@@ -290,8 +279,6 @@ class TestCopyCommand:
                         [("/staging/b", "AccessDenied")],
                     ),
                 ):
-                    result = runner.invoke(
-                        main, ["copy", "--yes", "/app/prod", "/app/staging"]
-                    )
+                    result = runner.invoke(main, ["copy", "--yes", "/app/prod", "/app/staging"])
         assert result.exit_code == 0
         assert "Failed 1" in result.output
