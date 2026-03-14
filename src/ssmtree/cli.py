@@ -6,18 +6,19 @@ import json
 import re
 import sys
 
-import boto3
 import click
 from rich.console import Console
 
 from ssmtree import __version__
 from ssmtree.copier import CopyError, copy_namespace
 from ssmtree.differ import diff_namespaces
-from ssmtree.fetcher import FetchError, fetch_parameters
+from ssmtree.fetcher import FetchError, fetch_parameters, make_client
 from ssmtree.formatters import render_copy_plan, render_diff, render_tree
+from ssmtree.putter import PutError, put_parameter
 from ssmtree.tree import build_tree, filter_tree
 
 console = Console()
+err_console = Console(stderr=True)
 
 _REDACTED = "***REDACTED***"
 _SSM_PATH_RE = re.compile(r"^/[a-zA-Z0-9_./-]+$")
@@ -167,9 +168,8 @@ def main(
 
     if output == "json":
         if decrypt and include_secrets:
-            console.print(
+            err_console.print(
                 "[bold yellow]WARNING:[/] Secret values will be included in output.",
-                stderr=True,
             )
         data = [
             {
@@ -242,9 +242,8 @@ def diff_cmd(
 
     if output == "json":
         if decrypt and include_secrets:
-            console.print(
+            err_console.print(
                 "[bold yellow]WARNING:[/] Secret values will be included in output.",
-                stderr=True,
             )
         data = {
             "added": [
@@ -352,8 +351,7 @@ def copy_cmd(
             console.print("[dim]Aborted.[/]")
             return
 
-    session = boto3.Session(profile_name=profile, region_name=region)
-    ssm_client = session.client("ssm")
+    ssm_client = make_client(profile, region)
 
     try:
         written, failed = copy_namespace(
@@ -374,3 +372,132 @@ def copy_cmd(
         console.print(f"[bold red]Failed {len(failed)} parameter(s):[/]")
         for path, err in failed:
             console.print(f"  {path}: {err}")
+
+
+@main.command("put")
+@click.argument("path")
+@click.argument("value", required=False, default=None)
+@click.option("--profile", default=None, help="AWS named profile.")
+@click.option("--region", default=None, help="AWS region.")
+@click.option(
+    "--type",
+    "param_type",
+    type=click.Choice(["String", "SecureString", "StringList"]),
+    default="String",
+    help="Parameter type (default: String).",
+)
+@click.option("--secure", is_flag=True, default=False, help="Shorthand for --type SecureString.")
+@click.option(
+    "--overwrite/--no-overwrite",
+    default=False,
+    help="Overwrite existing parameter (default: no).",
+)
+@click.option("--description", default=None, help="Parameter description.")
+@click.option(
+    "--kms-key-id", default=None, help="KMS key for SecureString encryption."
+)
+@click.option(
+    "--stdin",
+    "from_stdin",
+    is_flag=True,
+    default=False,
+    help="Read value from stdin (avoids exposing secrets in process list or shell history).",
+)
+@click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt.")
+def put_cmd(
+    path: str,
+    value: str | None,
+    profile: str | None,
+    region: str | None,
+    param_type: str,
+    secure: bool,
+    overwrite: bool,
+    description: str | None,
+    kms_key_id: str | None,
+    from_stdin: bool,
+    yes: bool,
+) -> None:
+    """Create or update an SSM parameter.
+
+    VALUE can be provided as a positional argument or via --stdin. For secrets,
+    prefer --stdin to avoid exposing the value in the process list or shell
+    history.
+
+    \b
+    Examples:
+      ssmtree put /app/prod/db/host "prod-db.example.com"
+      ssmtree put --secure --stdin /app/prod/db/password
+      echo "s3cret" | ssmtree put --secure --stdin /app/prod/db/password
+      ssmtree put --type SecureString --kms-key-id alias/my-key /app/prod/key "val"
+      ssmtree put --overwrite --yes /app/prod/db/host "new-host.example.com"
+      ssmtree put --type StringList /app/prod/ips "10.0.0.1,10.0.0.2"
+    """
+    _validate_path(path)
+    if path == "/":
+        _abort("Cannot create a parameter at the root path '/'.")
+
+    if secure:
+        param_type = "SecureString"
+
+    if kms_key_id and param_type != "SecureString":
+        _abort("--kms-key-id can only be used with SecureString parameters.")
+
+    # Resolve the value: --stdin takes priority, then positional VALUE.
+    if from_stdin:
+        if value is not None:
+            _abort("Cannot use both a positional VALUE and --stdin.")
+        raw = click.get_text_stream("stdin").read()
+        # Strip exactly one trailing newline (from echo/heredoc), but preserve
+        # intentional trailing newlines beyond the first.
+        if raw.endswith("\n"):
+            raw = raw[:-1]
+        if not raw:
+            _abort("No value received from stdin.")
+        value = raw
+    elif value is None:
+        _abort("Missing required argument VALUE. Use a positional argument or --stdin.")
+
+    # Warn when a SecureString value is passed as a positional argument.
+    if param_type == "SecureString" and not from_stdin:
+        err_console.print(
+            "[bold yellow]WARNING:[/] Secret value passed as a command-line argument. "
+            "It may be visible in your shell history and process list. "
+            "Consider using --stdin instead.",
+        )
+
+    # Confirmation prompt for overwrite.  When --stdin is used the prompt
+    # cannot read from the same stream, so --yes is required.
+    if overwrite and not yes:
+        if from_stdin:
+            _abort("--overwrite with --stdin requires --yes to confirm.")
+        console.print(
+            f"[bold yellow]WARNING:[/] --overwrite is enabled. "
+            f"If {path} exists it will be replaced."
+        )
+        if not click.confirm(f"Overwrite parameter {path}?"):
+            console.print("[dim]Aborted.[/]")
+            return
+
+    ssm_client = make_client(profile, region)
+
+    try:
+        version = put_parameter(
+            path=path,
+            value=value,
+            parameter_type=param_type,  # type: ignore[arg-type]
+            ssm_client=ssm_client,
+            overwrite=overwrite,
+            description=description,
+            kms_key_id=kms_key_id,
+        )
+    except PutError as exc:
+        _abort(str(exc))
+        return
+
+    type_label = (
+        "[bold yellow]SecureString[/]"
+        if param_type == "SecureString"
+        else f"[bold cyan]{param_type}[/]"
+    )
+    action = "Updated" if overwrite else "Created"
+    console.print(f"[bold green]{action}[/] {path} ({type_label}, version {version})")
