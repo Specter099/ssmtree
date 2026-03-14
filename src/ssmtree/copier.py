@@ -81,9 +81,7 @@ def copy_namespace(
     ) as progress:
         task = progress.add_task("Copying parameters…", total=len(source_params))
 
-        for param, dest_path in zip(
-            sorted(source_params, key=lambda p: p.path), planned
-        ):
+        for param, dest_path in zip(sorted(source_params, key=lambda p: p.path), planned):
             put_kwargs: dict[str, Any] = {
                 "Name": dest_path,
                 "Value": param.value,
@@ -96,8 +94,11 @@ def copy_namespace(
             try:
                 ssm_client.put_parameter(**put_kwargs)
                 written.append(dest_path)
-            except (ClientError, BotoCoreError) as exc:
-                failed.append((dest_path, str(exc)))
+            except ClientError as exc:
+                error_msg = exc.response["Error"].get("Message", "Unknown error")
+                failed.append((dest_path, error_msg))
+            except BotoCoreError:
+                failed.append((dest_path, "AWS API error"))
             progress.advance(task)
 
     return written, failed

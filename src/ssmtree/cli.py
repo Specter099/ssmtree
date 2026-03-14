@@ -9,11 +9,12 @@ import sys
 import boto3
 import click
 from rich.console import Console
+from rich.markup import escape
 
 from ssmtree import __version__
 from ssmtree.copier import CopyError, copy_namespace
 from ssmtree.differ import diff_namespaces
-from ssmtree.fetcher import FetchError, fetch_parameters
+from ssmtree.fetcher import _RETRY_CONFIG, FetchError, fetch_parameters
 from ssmtree.formatters import render_copy_plan, render_diff, render_tree
 from ssmtree.tree import build_tree, filter_tree
 
@@ -24,7 +25,7 @@ _SSM_PATH_RE = re.compile(r"^/[a-zA-Z0-9_./-]+$")
 
 
 def _abort(msg: str) -> None:
-    console.print(f"[bold red]Error:[/] {msg}")
+    console.print(f"[bold red]Error:[/] {escape(msg)}")
     sys.exit(1)
 
 
@@ -96,7 +97,6 @@ class _DefaultPathGroup(click.Group):
 @click.group(
     cls=_DefaultPathGroup,
     invoke_without_command=True,
-
 )
 @click.pass_context
 @click.option("--decrypt", "-d", is_flag=True, default=False, help="Decrypt SecureStrings.")
@@ -166,10 +166,9 @@ def main(
         tree = build_tree(params, root_path=path)
 
     if output == "json":
-        if decrypt and include_secrets:
+        if include_secrets:
             console.print(
                 "[bold yellow]WARNING:[/] Secret values will be included in output.",
-                stderr=True,
             )
         data = [
             {
@@ -241,10 +240,9 @@ def diff_cmd(
     added, removed, changed = diff_namespaces(params1, params2, path1, path2)
 
     if output == "json":
-        if decrypt and include_secrets:
+        if include_secrets:
             console.print(
                 "[bold yellow]WARNING:[/] Secret values will be included in output.",
-                stderr=True,
             )
         data = {
             "added": [
@@ -333,7 +331,7 @@ def copy_cmd(
         return
 
     if not params:
-        console.print(f"[yellow]No parameters found under {source}[/]")
+        console.print(f"[yellow]No parameters found under {escape(source)}[/]")
         return
 
     if dry_run:
@@ -346,14 +344,14 @@ def copy_cmd(
         if overwrite:
             console.print(
                 f"[bold yellow]WARNING:[/] --overwrite is enabled. "
-                f"Existing parameters under {dest} will be replaced."
+                f"Existing parameters under {escape(dest)} will be replaced."
             )
         if not click.confirm(f"Copy {len(params)} parameter(s) to {dest}?"):
             console.print("[dim]Aborted.[/]")
             return
 
     session = boto3.Session(profile_name=profile, region_name=region)
-    ssm_client = session.client("ssm")
+    ssm_client = session.client("ssm", config=_RETRY_CONFIG)
 
     try:
         written, failed = copy_namespace(
@@ -369,8 +367,11 @@ def copy_cmd(
         _abort(str(exc))
         return
 
-    console.print(f"[bold green]Copied {len(written)} parameter(s)[/] from {source} → {dest}")
+    console.print(
+        f"[bold green]Copied {len(written)} parameter(s)[/] "
+        f"from {escape(source)} \u2192 {escape(dest)}"
+    )
     if failed:
         console.print(f"[bold red]Failed {len(failed)} parameter(s):[/]")
         for path, err in failed:
-            console.print(f"  {path}: {err}")
+            console.print(f"  {escape(path)}: {escape(err)}")
