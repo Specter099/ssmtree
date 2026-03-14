@@ -448,9 +448,14 @@ def put_cmd(
     if from_stdin:
         if value is not None:
             _abort("Cannot use both a positional VALUE and --stdin.")
-        value = click.get_text_stream("stdin").read().rstrip("\n")
-        if not value:
+        raw = click.get_text_stream("stdin").read()
+        # Strip exactly one trailing newline (from echo/heredoc), but preserve
+        # intentional trailing newlines beyond the first.
+        if raw.endswith("\n"):
+            raw = raw[:-1]
+        if not raw:
             _abort("No value received from stdin.")
+        value = raw
     elif value is None:
         _abort("Missing required argument VALUE. Use a positional argument or --stdin.")
 
@@ -462,8 +467,11 @@ def put_cmd(
             "Consider using --stdin instead.",
         )
 
-    # Confirmation prompt for overwrite only.
+    # Confirmation prompt for overwrite.  When --stdin is used the prompt
+    # cannot read from the same stream, so --yes is required.
     if overwrite and not yes:
+        if from_stdin:
+            _abort("--overwrite with --stdin requires --yes to confirm.")
         console.print(
             f"[bold yellow]WARNING:[/] --overwrite is enabled. "
             f"If {escape(path)} exists it will be replaced."
@@ -488,4 +496,10 @@ def put_cmd(
         _abort(str(exc))
         return
 
-    console.print(f"[bold green]Written:[/] {escape(path)} [dim](version {version})[/]")
+    type_label = (
+        "[bold yellow]SecureString[/]"
+        if param_type == "SecureString"
+        else f"[bold cyan]{param_type}[/]"
+    )
+    action = "Updated" if overwrite else "Created"
+    console.print(f"[bold green]{action}[/] {path} ({type_label}, version {version})")
