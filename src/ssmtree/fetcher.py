@@ -32,7 +32,8 @@ def _sanitize_error(msg: str) -> str:
 _RETRY_CONFIG = Config(retries={"max_attempts": 5, "mode": "adaptive"})
 
 
-def _make_client(profile: str | None, region: str | None) -> SSMClient:
+def make_client(profile: str | None, region: str | None) -> SSMClient:
+    """Create a boto3 SSM client with retry configuration."""
     session = boto3.Session(profile_name=profile, region_name=region)
     return session.client("ssm", config=_RETRY_CONFIG)  # type: ignore[return-value]
 
@@ -57,7 +58,7 @@ def fetch_parameters(
     Raises:
         FetchError: On any AWS API error.
     """
-    client = _make_client(profile, region)
+    client = make_client(profile, region)
     params: list[Parameter] = []
     kwargs: dict = {
         "Path": prefix,

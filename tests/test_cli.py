@@ -234,15 +234,15 @@ class TestCopyCommand:
         assert result.exit_code == 0
         assert "Dry run" in result.output or "dry" in result.output.lower()
 
-    def test_dry_run_does_not_call_boto3(self, runner):
+    def test_dry_run_does_not_call_make_client(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
-            with patch("ssmtree.cli.boto3") as mock_boto:
+            with patch("ssmtree.cli.make_client") as mock_make:
                 result = runner.invoke(
                     main, ["copy", "--dry-run", "/app/prod", "/app/staging"]
                 )
         assert result.exit_code == 0
-        # boto3.Session should NOT have been called on dry run
-        mock_boto.Session.assert_not_called()
+        # make_client should NOT have been called on dry run
+        mock_make.assert_not_called()
 
     def test_empty_source_shows_message(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=[]):
@@ -252,7 +252,7 @@ class TestCopyCommand:
 
     def test_copy_invokes_copy_namespace(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
-            with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.make_client"):
                 with patch(
                     "ssmtree.cli.copy_namespace",
                     return_value=(["/staging/a"], []),
@@ -265,7 +265,7 @@ class TestCopyCommand:
 
     def test_copy_without_yes_prompts(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
-            with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.make_client"):
                 with patch(
                     "ssmtree.cli.copy_namespace",
                     return_value=(["/staging/a"], []),
@@ -283,7 +283,7 @@ class TestCopyCommand:
 
     def test_copy_reports_failures(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
-            with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.make_client"):
                 with patch(
                     "ssmtree.cli.copy_namespace",
                     return_value=(
@@ -306,7 +306,7 @@ class TestPutCommand:
         assert "VALUE" in result.output
 
     def test_put_string_parameter(self, runner):
-        with patch("ssmtree.cli.boto3") as mock_boto:
+        with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
                 result = runner.invoke(
                     main, ["put", "/app/prod/db/host", "prod-db.example.com"]
@@ -319,7 +319,7 @@ class TestPutCommand:
         assert call_kwargs[1]["parameter_type"] == "String"
 
     def test_put_secure_flag(self, runner):
-        with patch("ssmtree.cli.boto3"):
+        with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
                 result = runner.invoke(
                     main, ["put", "--secure", "/app/prod/secret", "s3cret"]
@@ -330,7 +330,7 @@ class TestPutCommand:
         assert call_kwargs[1]["parameter_type"] == "SecureString"
 
     def test_put_type_secure_string(self, runner):
-        with patch("ssmtree.cli.boto3"):
+        with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
                 result = runner.invoke(
                     main,
@@ -341,7 +341,7 @@ class TestPutCommand:
         assert call_kwargs[1]["parameter_type"] == "SecureString"
 
     def test_put_type_string_list(self, runner):
-        with patch("ssmtree.cli.boto3"):
+        with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
                 result = runner.invoke(
                     main,
@@ -351,19 +351,19 @@ class TestPutCommand:
         call_kwargs = mock_put.call_args
         assert call_kwargs[1]["parameter_type"] == "StringList"
 
-    def test_put_overwrite(self, runner):
-        with patch("ssmtree.cli.boto3"):
+    def test_put_overwrite_with_yes(self, runner):
+        with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=2) as mock_put:
                 result = runner.invoke(
                     main,
-                    ["put", "--overwrite", "/app/prod/key", "new-val"],
+                    ["put", "--overwrite", "--yes", "/app/prod/key", "new-val"],
                 )
         assert result.exit_code == 0
         call_kwargs = mock_put.call_args
         assert call_kwargs[1]["overwrite"] is True
 
     def test_put_with_description(self, runner):
-        with patch("ssmtree.cli.boto3"):
+        with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
                 result = runner.invoke(
                     main,
@@ -374,7 +374,7 @@ class TestPutCommand:
         assert call_kwargs[1]["description"] == "Database host"
 
     def test_put_with_kms_key_id(self, runner):
-        with patch("ssmtree.cli.boto3"):
+        with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
                 result = runner.invoke(
                     main,
@@ -404,7 +404,7 @@ class TestPutCommand:
         assert result.exit_code != 0
 
     def test_put_error_exits_nonzero(self, runner):
-        with patch("ssmtree.cli.boto3"):
+        with patch("ssmtree.cli.make_client"):
             with patch(
                 "ssmtree.cli.put_parameter",
                 side_effect=PutError("ParameterAlreadyExists"),
@@ -417,7 +417,7 @@ class TestPutCommand:
 
     def test_secure_flag_overrides_type_option(self, runner):
         """--secure should override --type String to SecureString."""
-        with patch("ssmtree.cli.boto3"):
+        with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
                 result = runner.invoke(
                     main,
@@ -428,10 +428,126 @@ class TestPutCommand:
         assert call_kwargs[1]["parameter_type"] == "SecureString"
 
     def test_put_shows_version_in_output(self, runner):
-        with patch("ssmtree.cli.boto3"):
+        with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=3):
                 result = runner.invoke(
                     main, ["put", "/app/prod/key", "val"]
                 )
         assert result.exit_code == 0
         assert "version 3" in result.output
+
+    # --- Security fix tests ---
+
+    def test_put_root_path_rejected(self, runner):
+        """Fix #6: '/' must not be accepted as a put target."""
+        result = runner.invoke(main, ["put", "/", "val"])
+        assert result.exit_code != 0
+        assert "root" in result.output.lower()
+
+    def test_put_stdin_reads_value(self, runner):
+        """Fix #1: --stdin reads the value from stdin."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--stdin", "/app/prod/key"],
+                    input="my-secret-value\n",
+                )
+        assert result.exit_code == 0
+        assert mock_put.call_args[1]["value"] == "my-secret-value"
+
+    def test_put_stdin_strips_trailing_newline(self, runner):
+        """Fix #1: trailing newline from piped input is stripped."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--stdin", "/app/prod/key"],
+                    input="value-no-newline",
+                )
+        assert result.exit_code == 0
+        assert mock_put.call_args[1]["value"] == "value-no-newline"
+
+    def test_put_stdin_and_positional_value_conflict(self, runner):
+        """Fix #1: cannot supply both --stdin and positional VALUE."""
+        result = runner.invoke(
+            main,
+            ["put", "--stdin", "/app/prod/key", "extra-value"],
+            input="stdin-value\n",
+        )
+        assert result.exit_code != 0
+        assert "Cannot use both" in result.output
+
+    def test_put_stdin_empty_fails(self, runner):
+        """Fix #1: empty stdin must produce an error."""
+        result = runner.invoke(
+            main,
+            ["put", "--stdin", "/app/prod/key"],
+            input="",
+        )
+        assert result.exit_code != 0
+        assert "No value" in result.output
+
+    def test_put_no_value_and_no_stdin_fails(self, runner):
+        """Fix #1: omitting VALUE without --stdin must fail."""
+        result = runner.invoke(main, ["put", "/app/prod/key"])
+        assert result.exit_code != 0
+        assert "Missing" in result.output or "VALUE" in result.output
+
+    def test_put_secure_positional_warns(self, runner):
+        """Fix #1: passing a SecureString value as a CLI arg emits a warning."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1):
+                result = runner.invoke(
+                    main,
+                    ["put", "--secure", "/app/prod/secret", "visible-secret"],
+                )
+        assert result.exit_code == 0
+        assert "WARNING" in result.output
+        assert "shell history" in result.output or "process list" in result.output
+
+    def test_put_secure_stdin_no_warning(self, runner):
+        """Fix #1: --stdin with --secure should NOT emit process list warning."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1):
+                result = runner.invoke(
+                    main,
+                    ["put", "--secure", "--stdin", "/app/prod/secret"],
+                    input="safe-secret\n",
+                )
+        assert result.exit_code == 0
+        assert "process list" not in result.output
+
+    def test_put_overwrite_prompts_without_yes(self, runner):
+        """Fix #3: --overwrite without --yes prompts for confirmation."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1):
+                result = runner.invoke(
+                    main,
+                    ["put", "--overwrite", "/app/prod/key", "val"],
+                    input="n\n",
+                )
+        assert result.exit_code == 0
+        assert "Aborted" in result.output
+
+    def test_put_overwrite_confirmed_proceeds(self, runner):
+        """Fix #3: --overwrite confirmed via prompt proceeds."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=2) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--overwrite", "/app/prod/key", "val"],
+                    input="y\n",
+                )
+        assert result.exit_code == 0
+        mock_put.assert_called_once()
+
+    def test_put_uses_make_client(self, runner):
+        """Fix #5: put command uses the shared retry-configured client factory."""
+        with patch("ssmtree.cli.make_client") as mock_make:
+            with patch("ssmtree.cli.put_parameter", return_value=1):
+                result = runner.invoke(
+                    main, ["put", "/app/prod/key", "val"]
+                )
+        assert result.exit_code == 0
+        mock_make.assert_called_once()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -14,6 +15,19 @@ if TYPE_CHECKING:
 
 class PutError(Exception):
     """Raised when a put_parameter call fails."""
+
+
+_ARN_RE = re.compile(r"arn:aws[a-zA-Z-]*:[a-zA-Z0-9-]+:\S+")
+_ACCOUNT_RE = re.compile(r"\b\d{12}\b")
+
+
+def _sanitize_error(msg: str, value: str) -> str:
+    """Strip ARNs, AWS account IDs, and the parameter value from error messages."""
+    msg = _ARN_RE.sub("arn:***", msg)
+    msg = _ACCOUNT_RE.sub("***", msg)
+    if value:
+        msg = msg.replace(value, "***")
+    return msg
 
 
 def put_parameter(
@@ -58,4 +72,5 @@ def put_parameter(
         response = ssm_client.put_parameter(**put_kwargs)
         return response["Version"]
     except (ClientError, BotoCoreError) as exc:
-        raise PutError(str(exc)) from exc
+        sanitized = _sanitize_error(str(exc), value)
+        raise PutError(sanitized) from exc

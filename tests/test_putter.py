@@ -8,7 +8,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from ssmtree.putter import PutError, put_parameter
+from ssmtree.putter import PutError, _sanitize_error, put_parameter
 
 
 @pytest.fixture(autouse=True)
@@ -119,3 +119,38 @@ class TestPutParameter:
         client.put_parameter(Name="/app/key", Value="v", Type="String")
         with pytest.raises(PutError):
             put_parameter("/app/key", "new", "String", client, overwrite=False)
+
+
+class TestSanitizeError:
+    """Fix #2: error messages must not leak secret values, ARNs, or account IDs."""
+
+    def test_strips_parameter_value(self):
+        msg = "An error occurred: value=TopSecretPassword123 is invalid"
+        result = _sanitize_error(msg, "TopSecretPassword123")
+        assert "TopSecretPassword123" not in result
+        assert "***" in result
+
+    def test_strips_arn(self):
+        msg = "Access denied for arn:aws:ssm:us-east-1:123456789012:parameter/key"
+        result = _sanitize_error(msg, "val")
+        assert "123456789012" not in result
+        assert "arn:***" in result
+
+    def test_strips_account_id(self):
+        msg = "Account 123456789012 does not have permission"
+        result = _sanitize_error(msg, "val")
+        assert "123456789012" not in result
+
+    def test_strips_value_and_arn_together(self):
+        msg = (
+            "Error putting my-secret to "
+            "arn:aws:ssm:us-east-1:123456789012:parameter/key"
+        )
+        result = _sanitize_error(msg, "my-secret")
+        assert "my-secret" not in result
+        assert "123456789012" not in result
+
+    def test_empty_value_is_safe(self):
+        msg = "Some error"
+        result = _sanitize_error(msg, "")
+        assert result == "Some error"
