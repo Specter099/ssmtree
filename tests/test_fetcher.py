@@ -125,7 +125,7 @@ def test_fetch_invalid_region_raises_fetch_error(monkeypatch):
 
         return ErrorClient()
 
-    monkeypatch.setattr(fetcher_module, "_make_client", bad_client)
+    monkeypatch.setattr(fetcher_module, "make_client", bad_client)
 
     with pytest.raises(FetchError):
         fetch_parameters("/app")
