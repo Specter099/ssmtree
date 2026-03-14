@@ -6,7 +6,6 @@ import json
 import re
 import sys
 
-import boto3
 import click
 from rich.console import Console
 from rich.markup import escape
@@ -14,12 +13,13 @@ from rich.markup import escape
 from ssmtree import __version__
 from ssmtree.copier import CopyError, copy_namespace
 from ssmtree.differ import diff_namespaces
-from ssmtree.fetcher import _RETRY_CONFIG, FetchError, fetch_parameters
+from ssmtree.fetcher import FetchError, fetch_parameters, make_client
 from ssmtree.formatters import render_copy_plan, render_diff, render_tree
 from ssmtree.putter import PutError, put_parameter
 from ssmtree.tree import build_tree, filter_tree
 
 console = Console()
+err_console = Console(stderr=True)
 
 _REDACTED = "***REDACTED***"
 _SSM_PATH_RE = re.compile(r"^/[a-zA-Z0-9_./-]+$")
@@ -351,8 +351,7 @@ def copy_cmd(
             console.print("[dim]Aborted.[/]")
             return
 
-    session = boto3.Session(profile_name=profile, region_name=region)
-    ssm_client = session.client("ssm", config=_RETRY_CONFIG)
+    ssm_client = make_client(profile, region)
 
     try:
         written, failed = copy_namespace(
@@ -380,7 +379,9 @@ def copy_cmd(
 
 @main.command("put")
 @click.argument("path")
-@click.argument("value")
+@click.argument("value", required=False, default=None)
+@click.option("--profile", default=None, help="AWS named profile.")
+@click.option("--region", default=None, help="AWS region.")
 @click.option(
     "--type",
     "-t",
@@ -398,35 +399,44 @@ def copy_cmd(
 )
 @click.option("--kms-key-id", default=None, help="KMS key ID or ARN for SecureString encryption.")
 @click.option("--description", default=None, help="Optional parameter description.")
-@click.option("--profile", default=None, help="AWS named profile.")
-@click.option("--region", default=None, help="AWS region.")
+@click.option(
+    "--stdin",
+    "from_stdin",
+    is_flag=True,
+    default=False,
+    help="Read value from stdin (avoids exposing secrets in process list or shell history).",
+)
 @click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt.")
 def put_cmd(
     path: str,
-    value: str,
+    value: str | None,
+    profile: str | None,
+    region: str | None,
     param_type: str,
     secure: bool,
     overwrite: bool,
     kms_key_id: str | None,
     description: str | None,
-    profile: str | None,
-    region: str | None,
+    from_stdin: bool,
     yes: bool,
 ) -> None:
     """Write a single SSM parameter.
 
-    VALUE may be "-" to read from stdin (avoids shell history for secrets).
+    VALUE can be provided as a positional argument or via --stdin. For secrets,
+    prefer --stdin to avoid exposing the value in the process list or shell history.
 
     \b
     Examples:
       ssmtree put /app/prod/db/host my-host
-      ssmtree put --type SecureString /app/prod/db/password my-secret
-      ssmtree put --secure /app/prod/db/password my-secret
-      echo "my-secret" | ssmtree put --type SecureString /app/prod/db/password -
+      ssmtree put --secure --stdin /app/prod/db/password
+      echo "my-secret" | ssmtree put --secure --stdin /app/prod/db/password
+      ssmtree put --type SecureString --kms-key-id alias/my-key /app/prod/key val
       ssmtree put --overwrite --yes /app/prod/db/host new-host
-      ssmtree put --kms-key-id alias/my-key --type SecureString /app/prod/db/password -
+      ssmtree put --type StringList /app/prod/ips "10.0.0.1,10.0.0.2"
     """
     _validate_path(path)
+    if path == "/":
+        _abort("Cannot create a parameter at the root path '/'.")
 
     if secure:
         param_type = "SecureString"
@@ -434,24 +444,35 @@ def put_cmd(
     if kms_key_id and param_type != "SecureString":
         _abort("--kms-key-id can only be used with SecureString parameters.")
 
-    if value == "-":
+    # Resolve the value: --stdin takes priority, then positional VALUE.
+    if from_stdin:
+        if value is not None:
+            _abort("Cannot use both a positional VALUE and --stdin.")
         value = click.get_text_stream("stdin").read().rstrip("\n")
         if not value:
-            _abort("No value provided on stdin.")
+            _abort("No value received from stdin.")
+    elif value is None:
+        _abort("Missing required argument VALUE. Use a positional argument or --stdin.")
 
-    if not yes:
-        if overwrite:
-            console.print(
-                f"[bold yellow]WARNING:[/] --overwrite is enabled. "
-                f"Existing parameter {escape(path)} will be replaced."
-            )
-        display_value = _REDACTED if param_type == "SecureString" else escape(value)
-        if not click.confirm(f"Write {escape(path)} ({param_type}) = {display_value}?"):
+    # Warn when a SecureString value is passed as a positional argument.
+    if param_type == "SecureString" and not from_stdin:
+        err_console.print(
+            "[bold yellow]WARNING:[/] Secret value passed as a command-line argument. "
+            "It may be visible in your shell history and process list. "
+            "Consider using --stdin instead.",
+        )
+
+    # Confirmation prompt for overwrite only.
+    if overwrite and not yes:
+        console.print(
+            f"[bold yellow]WARNING:[/] --overwrite is enabled. "
+            f"If {escape(path)} exists it will be replaced."
+        )
+        if not click.confirm(f"Overwrite parameter {escape(path)}?"):
             console.print("[dim]Aborted.[/]")
             return
 
-    session = boto3.Session(profile_name=profile, region_name=region)
-    ssm_client = session.client("ssm", config=_RETRY_CONFIG)
+    ssm_client = make_client(profile, region)
 
     try:
         version = put_parameter(

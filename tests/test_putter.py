@@ -8,7 +8,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from ssmtree.putter import PutError, put_parameter
+from ssmtree.putter import PutError, _sanitize_error, put_parameter
 
 
 @pytest.fixture(autouse=True)
@@ -93,7 +93,6 @@ class TestPutParameter:
     def test_kms_key_id_passed_for_secure_string(self):
         """KMS key should be accepted without error for SecureString (moto accepts it)."""
         client = boto3.client("ssm", region_name="us-east-1")
-        # moto accepts any kms_key_id string; just verify the call succeeds
         version = put_parameter(
             "/app/prod/secret", "val",
             param_type="SecureString",
@@ -106,7 +105,6 @@ class TestPutParameter:
     def test_kms_key_id_ignored_for_string(self):
         """kms_key_id should not be included in the API call for String type."""
         client = boto3.client("ssm", region_name="us-east-1")
-        # Should succeed without error even if kms_key_id is provided for String
         version = put_parameter(
             "/app/prod/key", "val",
             param_type="String",
@@ -148,10 +146,44 @@ class TestPutParameter:
         monkeypatch.setattr(client, "put_parameter", _raise)
         with pytest.raises(PutError) as exc_info:
             put_parameter("/app/prod/key", "val", ssm_client=client)
-        # ARN and account ID should be redacted
         assert "123456789012" not in str(exc_info.value)
         assert "arn:***" in str(exc_info.value) or "***" in str(exc_info.value)
 
     def test_raises_when_no_client(self):
         with pytest.raises(PutError, match="ssm_client is required"):
             put_parameter("/app/prod/key", "val")
+
+
+class TestSanitizeError:
+    """Error messages must not leak secret values, ARNs, or account IDs."""
+
+    def test_strips_parameter_value(self):
+        msg = "An error occurred: value=TopSecretPassword123 is invalid"
+        result = _sanitize_error(msg, "TopSecretPassword123")
+        assert "TopSecretPassword123" not in result
+        assert "***" in result
+
+    def test_strips_arn(self):
+        msg = "Access denied for arn:aws:ssm:us-east-1:123456789012:parameter/key"
+        result = _sanitize_error(msg, "val")
+        assert "123456789012" not in result
+        assert "arn:***" in result
+
+    def test_strips_account_id(self):
+        msg = "Account 123456789012 does not have permission"
+        result = _sanitize_error(msg, "val")
+        assert "123456789012" not in result
+
+    def test_strips_value_and_arn_together(self):
+        msg = (
+            "Error putting my-secret to "
+            "arn:aws:ssm:us-east-1:123456789012:parameter/key"
+        )
+        result = _sanitize_error(msg, "my-secret")
+        assert "my-secret" not in result
+        assert "123456789012" not in result
+
+    def test_empty_value_is_safe(self):
+        msg = "Some error"
+        result = _sanitize_error(msg, "")
+        assert result == "Some error"
