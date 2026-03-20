@@ -282,3 +282,164 @@ class TestCopyCommand:
                     result = runner.invoke(main, ["copy", "--yes", "/app/prod", "/app/staging"])
         assert result.exit_code == 0
         assert "Failed 1" in result.output
+
+
+class TestPutCommand:
+    def test_put_help(self, runner):
+        result = runner.invoke(main, ["put", "--help"])
+        assert result.exit_code == 0
+        assert "PATH" in result.output
+        assert "VALUE" in result.output
+
+    def test_put_writes_and_shows_version(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=3) as mock_put:
+                result = runner.invoke(
+                    main, ["put", "--yes", "/app/prod/db/host", "my-host"]
+                )
+        assert result.exit_code == 0
+        assert "version 3" in result.output
+        mock_put.assert_called_once()
+
+    def test_put_validates_path(self, runner):
+        result = runner.invoke(main, ["put", "--yes", "no-leading-slash", "val"])
+        assert result.exit_code != 0
+
+    def test_put_stdin_reads_value(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "--yes", "/app/prod/db/password", "-"],
+                    input="mysecret\n",
+                )
+        assert result.exit_code == 0
+        called_value = mock_put.call_args[1]["value"]
+        assert called_value == "mysecret"
+
+    def test_put_empty_stdin_aborts(self, runner):
+        result = runner.invoke(
+            main,
+            ["put", "--yes", "/app/prod/db/password", "-"],
+            input="",
+        )
+        assert result.exit_code != 0
+        assert "No value provided on stdin" in result.output
+
+    def test_put_without_yes_prompts(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1):
+                result = runner.invoke(
+                    main,
+                    ["put", "/app/prod/db/host", "my-host"],
+                    input="y\n",
+                )
+        assert result.exit_code == 0
+        assert "Write" in result.output
+
+    def test_put_aborts_on_n(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main,
+                    ["put", "/app/prod/db/host", "my-host"],
+                    input="n\n",
+                )
+        assert result.exit_code == 0
+        assert "Aborted" in result.output
+        mock_put.assert_not_called()
+
+    def test_put_yes_skips_confirmation(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                result = runner.invoke(
+                    main, ["put", "--yes", "/app/prod/db/host", "my-host"]
+                )
+        assert result.exit_code == 0
+        mock_put.assert_called_once()
+        # No confirmation prompt text expected
+        assert "Write /app/prod/db/host" not in result.output
+
+    def test_put_overwrite_warning_shown(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=2):
+                result = runner.invoke(
+                    main,
+                    ["put", "--overwrite", "/app/prod/db/host", "my-host"],
+                    input="y\n",
+                )
+        assert result.exit_code == 0
+        assert "WARNING" in result.output
+
+    def test_put_secure_string_redacted_in_prompt(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1):
+                result = runner.invoke(
+                    main,
+                    ["put", "--type", "SecureString", "/app/prod/secret", "my-real-secret"],
+                    input="y\n",
+                )
+        assert result.exit_code == 0
+        assert "my-real-secret" not in result.output
+        assert "***REDACTED***" in result.output
+
+    def test_put_error_exits_nonzero(self, runner):
+        from ssmtree.putter import PutError
+
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", side_effect=PutError("access denied")):
+                result = runner.invoke(
+                    main, ["put", "--yes", "/app/prod/db/host", "my-host"]
+                )
+        assert result.exit_code != 0
+        assert "access denied" in result.output
+
+    def test_put_already_exists_message(self, runner):
+        from ssmtree.putter import PutError
+
+        with patch("ssmtree.cli.boto3"):
+            with patch(
+                "ssmtree.cli.put_parameter",
+                side_effect=PutError("Parameter '/app/prod/db/host' already exists. Use --overwrite to replace it."),
+            ):
+                result = runner.invoke(
+                    main, ["put", "--yes", "/app/prod/db/host", "my-host"]
+                )
+        assert result.exit_code != 0
+        assert "already exists" in result.output
+
+    def test_put_with_kms_key_id(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                runner.invoke(
+                    main,
+                    [
+                        "put", "--yes", "--type", "SecureString",
+                        "--kms-key-id", "alias/my-key",
+                        "/app/prod/secret", "val",
+                    ],
+                )
+        assert mock_put.call_args[1]["kms_key_id"] == "alias/my-key"
+
+    def test_put_with_description(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                runner.invoke(
+                    main,
+                    ["put", "--yes", "--description", "My param", "/app/prod/key", "val"],
+                )
+        assert mock_put.call_args[1]["description"] == "My param"
+
+    def test_put_default_type_is_string(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                runner.invoke(main, ["put", "--yes", "/app/prod/key", "val"])
+        assert mock_put.call_args[1]["param_type"] == "String"
+
+    def test_put_type_secure_string(self, runner):
+        with patch("ssmtree.cli.boto3"):
+            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
+                runner.invoke(
+                    main, ["put", "--yes", "--type", "SecureString", "/app/prod/secret", "val"]
+                )
+        assert mock_put.call_args[1]["param_type"] == "SecureString"
