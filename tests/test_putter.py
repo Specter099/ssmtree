@@ -45,7 +45,9 @@ class TestPutParameter:
     @mock_aws
     def test_writes_string_list(self):
         client = boto3.client("ssm", region_name="us-east-1")
-        put_parameter("/app/prod/ips", "1.2.3.4,5.6.7.8", param_type="StringList", ssm_client=client)
+        put_parameter(
+            "/app/prod/ips", "1.2.3.4,5.6.7.8", param_type="StringList", ssm_client=client
+        )
         response = client.get_parameter(Name="/app/prod/ips")
         assert response["Parameter"]["Type"] == "StringList"
 
@@ -89,7 +91,7 @@ class TestPutParameter:
 
     @mock_aws
     def test_kms_key_id_passed_for_secure_string(self):
-        """KMS key should be accepted without error for SecureString (moto ignores it but doesn't reject it)."""
+        """KMS key should be accepted without error for SecureString (moto accepts it)."""
         client = boto3.client("ssm", region_name="us-east-1")
         # moto accepts any kms_key_id string; just verify the call succeeds
         version = put_parameter(

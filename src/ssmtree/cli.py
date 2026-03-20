@@ -13,10 +13,10 @@ from rich.markup import escape
 
 from ssmtree import __version__
 from ssmtree.copier import CopyError, copy_namespace
-from ssmtree.putter import PutError, put_parameter
 from ssmtree.differ import diff_namespaces
 from ssmtree.fetcher import _RETRY_CONFIG, FetchError, fetch_parameters
 from ssmtree.formatters import render_copy_plan, render_diff, render_tree
+from ssmtree.putter import PutError, put_parameter
 from ssmtree.tree import build_tree, filter_tree
 
 console = Console()

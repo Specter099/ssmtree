@@ -23,7 +23,7 @@ def put_parameter(
     overwrite: bool = False,
     kms_key_id: str | None = None,
     description: str | None = None,
-    ssm_client: "SSMClient | None" = None,
+    ssm_client: SSMClient | None = None,
 ) -> int:
     """Write a single SSM parameter and return the resulting version number.
 

@@ -400,7 +400,9 @@ class TestPutCommand:
         with patch("ssmtree.cli.boto3"):
             with patch(
                 "ssmtree.cli.put_parameter",
-                side_effect=PutError("Parameter '/app/prod/db/host' already exists. Use --overwrite to replace it."),
+                side_effect=PutError(
+                    "Parameter '/app/prod/db/host' already exists. Use --overwrite to replace it."
+                ),
             ):
                 result = runner.invoke(
                     main, ["put", "--yes", "/app/prod/db/host", "my-host"]
