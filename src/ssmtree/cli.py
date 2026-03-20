@@ -9,12 +9,14 @@ import sys
 import boto3
 import click
 from rich.console import Console
+from rich.markup import escape
 
 from ssmtree import __version__
 from ssmtree.copier import CopyError, copy_namespace
 from ssmtree.differ import diff_namespaces
-from ssmtree.fetcher import FetchError, fetch_parameters
+from ssmtree.fetcher import _RETRY_CONFIG, FetchError, fetch_parameters
 from ssmtree.formatters import render_copy_plan, render_diff, render_tree
+from ssmtree.putter import PutError, put_parameter
 from ssmtree.tree import build_tree, filter_tree
 
 console = Console()
@@ -24,7 +26,7 @@ _SSM_PATH_RE = re.compile(r"^/[a-zA-Z0-9_./-]+$")
 
 
 def _abort(msg: str) -> None:
-    console.print(f"[bold red]Error:[/] {msg}")
+    console.print(f"[bold red]Error:[/] {escape(msg)}")
     sys.exit(1)
 
 
@@ -96,7 +98,6 @@ class _DefaultPathGroup(click.Group):
 @click.group(
     cls=_DefaultPathGroup,
     invoke_without_command=True,
-
 )
 @click.pass_context
 @click.option("--decrypt", "-d", is_flag=True, default=False, help="Decrypt SecureStrings.")
@@ -166,10 +167,9 @@ def main(
         tree = build_tree(params, root_path=path)
 
     if output == "json":
-        if decrypt and include_secrets:
+        if include_secrets:
             console.print(
                 "[bold yellow]WARNING:[/] Secret values will be included in output.",
-                stderr=True,
             )
         data = [
             {
@@ -241,10 +241,9 @@ def diff_cmd(
     added, removed, changed = diff_namespaces(params1, params2, path1, path2)
 
     if output == "json":
-        if decrypt and include_secrets:
+        if include_secrets:
             console.print(
                 "[bold yellow]WARNING:[/] Secret values will be included in output.",
-                stderr=True,
             )
         data = {
             "added": [
@@ -333,7 +332,7 @@ def copy_cmd(
         return
 
     if not params:
-        console.print(f"[yellow]No parameters found under {source}[/]")
+        console.print(f"[yellow]No parameters found under {escape(source)}[/]")
         return
 
     if dry_run:
@@ -346,14 +345,14 @@ def copy_cmd(
         if overwrite:
             console.print(
                 f"[bold yellow]WARNING:[/] --overwrite is enabled. "
-                f"Existing parameters under {dest} will be replaced."
+                f"Existing parameters under {escape(dest)} will be replaced."
             )
         if not click.confirm(f"Copy {len(params)} parameter(s) to {dest}?"):
             console.print("[dim]Aborted.[/]")
             return
 
     session = boto3.Session(profile_name=profile, region_name=region)
-    ssm_client = session.client("ssm")
+    ssm_client = session.client("ssm", config=_RETRY_CONFIG)
 
     try:
         written, failed = copy_namespace(
@@ -369,8 +368,94 @@ def copy_cmd(
         _abort(str(exc))
         return
 
-    console.print(f"[bold green]Copied {len(written)} parameter(s)[/] from {source} → {dest}")
+    console.print(
+        f"[bold green]Copied {len(written)} parameter(s)[/] "
+        f"from {escape(source)} \u2192 {escape(dest)}"
+    )
     if failed:
         console.print(f"[bold red]Failed {len(failed)} parameter(s):[/]")
         for path, err in failed:
-            console.print(f"  {path}: {err}")
+            console.print(f"  {escape(path)}: {escape(err)}")
+
+
+@main.command("put")
+@click.argument("path")
+@click.argument("value")
+@click.option(
+    "--type",
+    "-t",
+    "param_type",
+    type=click.Choice(["String", "SecureString", "StringList"]),
+    default="String",
+    show_default=True,
+    help="SSM parameter type.",
+)
+@click.option(
+    "--overwrite/--no-overwrite",
+    default=False,
+    help="Overwrite an existing parameter (default: no).",
+)
+@click.option("--kms-key-id", default=None, help="KMS key ID or ARN for SecureString encryption.")
+@click.option("--description", default=None, help="Optional parameter description.")
+@click.option("--profile", default=None, help="AWS named profile.")
+@click.option("--region", default=None, help="AWS region.")
+@click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt.")
+def put_cmd(
+    path: str,
+    value: str,
+    param_type: str,
+    overwrite: bool,
+    kms_key_id: str | None,
+    description: str | None,
+    profile: str | None,
+    region: str | None,
+    yes: bool,
+) -> None:
+    """Write a single SSM parameter.
+
+    VALUE may be "-" to read from stdin (avoids shell history for secrets).
+
+    \b
+    Examples:
+      ssmtree put /app/prod/db/host my-host
+      ssmtree put --type SecureString /app/prod/db/password my-secret
+      echo "my-secret" | ssmtree put --type SecureString /app/prod/db/password -
+      ssmtree put --overwrite --yes /app/prod/db/host new-host
+      ssmtree put --kms-key-id alias/my-key --type SecureString /app/prod/db/password -
+    """
+    _validate_path(path)
+
+    if value == "-":
+        value = click.get_text_stream("stdin").read().rstrip("\n")
+        if not value:
+            _abort("No value provided on stdin.")
+
+    if not yes:
+        if overwrite:
+            console.print(
+                f"[bold yellow]WARNING:[/] --overwrite is enabled. "
+                f"Existing parameter {escape(path)} will be replaced."
+            )
+        display_value = _REDACTED if param_type == "SecureString" else escape(value)
+        if not click.confirm(f"Write {escape(path)} ({param_type}) = {display_value}?"):
+            console.print("[dim]Aborted.[/]")
+            return
+
+    session = boto3.Session(profile_name=profile, region_name=region)
+    ssm_client = session.client("ssm", config=_RETRY_CONFIG)
+
+    try:
+        version = put_parameter(
+            path=path,
+            value=value,
+            param_type=param_type,
+            overwrite=overwrite,
+            kms_key_id=kms_key_id,
+            description=description,
+            ssm_client=ssm_client,
+        )
+    except PutError as exc:
+        _abort(str(exc))
+        return
+
+    console.print(f"[bold green]Written:[/] {escape(path)} [dim](version {version})[/]")
