@@ -22,7 +22,7 @@ console = Console()
 err_console = Console(stderr=True)
 
 _REDACTED = "***REDACTED***"
-_SSM_PATH_RE = re.compile(r"^/[a-zA-Z0-9_./-]+$")
+_SSM_PATH_RE = re.compile(r"^(?:/[a-zA-Z0-9_.-]+)+$")
 
 
 def _abort(msg: str) -> None:

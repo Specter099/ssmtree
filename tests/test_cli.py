@@ -773,25 +773,32 @@ class TestPutCommand:
         assert result.exit_code == 0
         assert "SecureString" in result.output
 
-    def test_put_path_with_consecutive_slashes_accepted_by_cli(self, runner):
-        """Document current behavior: '//app/prod' passes client-side regex and is sent to AWS.
+    def test_put_path_with_consecutive_slashes_rejected_by_cli(self, runner):
+        """Paths with consecutive slashes are rejected by the CLI."""
+        result = runner.invoke(main, ["put", "//app/prod/key", "val"])
+        assert result.exit_code != 0
 
-        The SSM path regex ^/[a-zA-Z0-9_./-]+$ accepts consecutive slashes
-        because '/' is included in the character class.  AWS itself rejects such
-        paths, so this test captures the behaviour as a known gap rather than
-        asserting it is correct.
-        """
+    def test_put_path_double_slash_mid_path_rejected(self, runner):
+        """A double slash in the middle of a path is rejected."""
+        result = runner.invoke(main, ["put", "/app//prod/key", "val"])
+        assert result.exit_code != 0
+
+    def test_put_path_trailing_slash_rejected(self, runner):
+        """A trailing slash in a path is rejected."""
+        result = runner.invoke(main, ["put", "/app/prod/", "val"])
+        assert result.exit_code != 0
+
+    def test_put_path_triple_slash_prefix_rejected(self, runner):
+        """A triple-slash prefix is rejected."""
+        result = runner.invoke(main, ["put", "///key", "val"])
+        assert result.exit_code != 0
+
+    def test_put_path_single_segment_still_valid(self, runner):
+        """A single-segment path like /key is still valid."""
         with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1):
-                result = runner.invoke(
-                    main, ["put", "//app/prod/key", "val"]
-                )
-        # Document current behavior: the CLI does NOT reject //app/prod today.
-        # If this assertion ever fails it means the validation was tightened.
-        assert result.exit_code == 0, (
-            "//app/prod currently passes client-side validation; "
-            "if this fails the regex was tightened (a good thing)"
-        )
+                result = runner.invoke(main, ["put", "/key", "val"])
+        assert result.exit_code == 0
 
     def test_put_kms_key_id_only_forwarded_for_secure_string(self, runner):
         """--kms-key-id with String type is rejected before calling put_parameter."""
