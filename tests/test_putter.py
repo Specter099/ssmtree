@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import os
+from unittest.mock import MagicMock, patch
 
 import boto3
 import pytest
+from botocore.exceptions import BotoCoreError
 from moto import mock_aws
 
 from ssmtree.putter import PutError, _sanitize_error, put_parameter
@@ -187,3 +189,80 @@ class TestSanitizeError:
         msg = "Some error"
         result = _sanitize_error(msg, "")
         assert result == "Some error"
+
+    def test_value_with_regex_special_chars_is_stripped(self):
+        """Values containing regex metacharacters like '.*' must still be replaced."""
+        msg = "Error: value=.* is invalid"
+        result = _sanitize_error(msg, ".*")
+        assert ".*" not in result
+        assert "***" in result
+
+    def test_value_with_dollar_sign_is_stripped(self):
+        """Values with '$' (regex anchor) must be replaced literally."""
+        msg = "Error putting $ecret"
+        result = _sanitize_error(msg, "$ecret")
+        assert "$ecret" not in result
+        assert "***" in result
+
+
+class TestPutParameterBotoCoreError:
+    """put_parameter must convert BotoCoreError (not just ClientError) into PutError."""
+
+    @mock_aws
+    def test_botocore_error_raises_put_error(self):
+        """A BotoCoreError from the SSM client is wrapped in PutError."""
+        client = boto3.client("ssm", region_name="us-east-1")
+
+        # Patch ssm_client.put_parameter to raise a BotoCoreError directly.
+        # BotoCoreError cannot be instantiated with a message kwarg, so we use
+        # a subclass with a simple signature.
+        class _FakeBotoCoreError(BotoCoreError):
+            msg = "simulated low-level connection failure"
+
+        with patch.object(client, "put_parameter", side_effect=_FakeBotoCoreError()):
+            with pytest.raises(PutError):
+                put_parameter("/app/test/key", "val", ssm_client=client)
+
+    @mock_aws
+    def test_botocore_error_message_is_sanitized(self):
+        """BotoCoreError message must have the secret value redacted."""
+        client = boto3.client("ssm", region_name="us-east-1")
+
+        class _FakeBotoCoreError(BotoCoreError):
+            msg = "connection failed for value=TopSecretValue123"
+
+        with patch.object(client, "put_parameter", side_effect=_FakeBotoCoreError()):
+            with pytest.raises(PutError) as exc_info:
+                put_parameter("/app/test/key", "TopSecretValue123", ssm_client=client)
+
+        assert "TopSecretValue123" not in str(exc_info.value)
+
+
+class TestPutParameterKmsKeyId:
+    """Verify kms_key_id is only forwarded for SecureString parameters."""
+
+    @mock_aws
+    def test_kms_key_id_not_forwarded_for_string_type(self):
+        """kms_key_id is silently ignored when parameter_type is 'String'."""
+        client = boto3.client("ssm", region_name="us-east-1")
+
+        # The putter implementation only adds KeyId for SecureString; passing
+        # kms_key_id for String should succeed (the key is simply not sent).
+        version = put_parameter(
+            "/app/test/key", "val", kms_key_id="alias/my-key", ssm_client=client
+        )
+        assert version == 1
+
+        resp = client.get_parameter(Name="/app/test/key")
+        assert resp["Parameter"]["Type"] == "String"
+
+    @mock_aws
+    def test_kms_key_id_not_forwarded_for_string_list_type(self):
+        """kms_key_id is silently ignored when parameter_type is 'StringList'."""
+        client = boto3.client("ssm", region_name="us-east-1")
+
+        version = put_parameter(
+            "/app/test/ips", "10.0.0.1,10.0.0.2", param_type="StringList",
+            kms_key_id="alias/key", ssm_client=client
+        )
+        assert version == 1
