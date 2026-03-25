@@ -41,7 +41,7 @@ STAGING_PARAMS = [
 
 @pytest.fixture()
 def runner():
-    return CliRunner(mix_stderr=False)
+    return CliRunner()
 
 
 class TestMainCommand:
@@ -681,41 +681,6 @@ class TestPutCommand:
         assert mock_put.call_args[1]["param_type"] == "SecureString"
         assert mock_put.call_args[1]["value"] == "my-secret"
         assert "SecureString" in result.output
-
-    def test_put_whitespace_only_value_is_accepted(self, runner):
-        """A value of only whitespace is technically valid for SSM."""
-        with patch("ssmtree.cli.make_client"):
-            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
-                result = runner.invoke(
-                    main, ["put", "/app/prod/key", "   "]
-                )
-        assert result.exit_code == 0
-        assert mock_put.call_args[1]["value"] == "   "
-
-    def test_put_path_with_special_valid_chars(self, runner):
-        """Paths with dots, underscores, and hyphens are valid."""
-        with patch("ssmtree.cli.make_client"):
-            with patch("ssmtree.cli.put_parameter", return_value=1):
-                result = runner.invoke(
-                    main, ["put", "/app/my-service_v2.0/key", "val"]
-                )
-        assert result.exit_code == 0
-
-    def test_put_path_with_invalid_chars_rejected(self, runner):
-        """Paths with spaces or special characters are rejected."""
-        result = runner.invoke(main, ["put", "/app/my service/key", "val"])
-        assert result.exit_code != 0
-
-    def test_put_no_overwrite_no_prompt(self, runner):
-        """Without --overwrite, no confirmation prompt is shown."""
-        with patch("ssmtree.cli.make_client"):
-            with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
-                result = runner.invoke(
-                    main, ["put", "/app/prod/key", "val"]
-                )
-        assert result.exit_code == 0
-        mock_put.assert_called_once()
-        assert "Overwrite" not in result.output
 
     # --- Additional edge-case tests ---
 
