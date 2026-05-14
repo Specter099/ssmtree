@@ -29,9 +29,10 @@ jobs:
         run: ruff check src tests
 
       - name: Audit dependencies
-        # CVE-2026-4539: pygments (transitive via rich); no fix as of 2026-03-24
-        # CVE-2026-3219, CVE-2026-6357: pip itself; upgrade pip when patched
-        run: pip install pip-audit && pip-audit --ignore-vuln CVE-2026-4539 --ignore-vuln CVE-2026-3219 --ignore-vuln CVE-2026-6357
+        run: |
+          pip install --upgrade pip
+          pip install pip-audit
+          pip-audit --ignore-vuln CVE-2026-4539 --ignore-vuln CVE-2026-3219
 
       - name: Run tests
         run: pytest --cov=ssmtree --cov-report=term-missing
