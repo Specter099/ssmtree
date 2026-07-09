@@ -8,6 +8,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
+from ssmtree.errors import sanitize_error
 from ssmtree.models import Parameter
 
 if TYPE_CHECKING:
@@ -96,9 +97,9 @@ def copy_namespace(
                 written.append(dest_path)
             except ClientError as exc:
                 error_msg = exc.response["Error"].get("Message", "Unknown error")
-                failed.append((dest_path, error_msg))
-            except BotoCoreError:
-                failed.append((dest_path, "AWS API error"))
+                failed.append((dest_path, sanitize_error(error_msg, param.value)))
+            except BotoCoreError as exc:
+                failed.append((dest_path, f"AWS API error ({type(exc).__name__})"))
             progress.advance(task)
 
     return written, failed

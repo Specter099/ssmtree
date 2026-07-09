@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING, Any
 
 from botocore.exceptions import BotoCoreError, ClientError
+
+from ssmtree.errors import sanitize_error
 
 if TYPE_CHECKING:
     from mypy_boto3_ssm import SSMClient
@@ -13,19 +14,6 @@ if TYPE_CHECKING:
 
 class PutError(Exception):
     """Raised when the put_parameter call cannot proceed."""
-
-
-_ARN_RE = re.compile(r"arn:aws[a-zA-Z-]*:[a-zA-Z0-9-]+:\S+")
-_ACCOUNT_RE = re.compile(r"\b\d{12}\b")
-
-
-def _sanitize_error(msg: str, value: str) -> str:
-    """Strip ARNs, AWS account IDs, and the parameter value from error messages."""
-    msg = _ARN_RE.sub("arn:***", msg)
-    msg = _ACCOUNT_RE.sub("***", msg)
-    if value:
-        msg = msg.replace(value, "***")
-    return msg
 
 
 def put_parameter(
@@ -77,7 +65,7 @@ def put_parameter(
             raise PutError(
                 f"Parameter {path!r} already exists. Use --overwrite to replace it."
             ) from exc
-        sanitized = _sanitize_error(str(exc), value)
+        sanitized = sanitize_error(str(exc), value)
         raise PutError(f"Failed to write parameter: {sanitized}") from exc
     except BotoCoreError as exc:
         raise PutError("AWS API error while writing parameter") from exc

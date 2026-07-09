@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rich.markup import escape
 from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
@@ -118,35 +119,42 @@ def render_diff(
     Returns:
         A :class:`rich.table.Table`.
     """
-    table = Table(title=f"Diff: {path1}  →  {path2}", show_lines=True)
+    table = Table(title=f"Diff: {escape(path1)}  →  {escape(path2)}", show_lines=True)
     table.add_column("Status", style="bold", width=10)
     table.add_column("Relative Path")
     if show_values:
-        table.add_column(path1, style="red")
-        table.add_column(path2, style="green")
+        table.add_column(escape(path1), style="red")
+        table.add_column(escape(path2), style="green")
 
     for param in sorted(removed, key=lambda p: p.path):
         rel = _relative(param.path, path1)
         if show_values:
-            table.add_row("removed", rel, Text(_display_value(param, decrypt)), Text(""))
+            table.add_row("removed", escape(rel), Text(_display_value(param, decrypt)), Text(""))
         else:
-            table.add_row("removed", rel)
+            table.add_row("removed", escape(rel))
 
     for param in sorted(added, key=lambda p: p.path):
         rel = _relative(param.path, path2)
         if show_values:
-            table.add_row("added", rel, Text(""), Text(_display_value(param, decrypt)))
+            table.add_row("added", escape(rel), Text(""), Text(_display_value(param, decrypt)))
         else:
-            table.add_row("added", rel)
+            table.add_row("added", escape(rel))
 
     for old, new in sorted(changed, key=lambda pair: pair[0].path):
         rel = _relative(old.path, path1)
         if show_values:
             old_val = Text(_display_value(old, decrypt))
             new_val = Text(_display_value(new, decrypt))
-            table.add_row("changed", rel, old_val, new_val)
+            table.add_row("changed", escape(rel), old_val, new_val)
         else:
-            table.add_row("changed", rel)
+            table.add_row("changed", escape(rel))
+
+    # SecureString ciphertext is non-deterministic, so undecrypted secrets always
+    # compare as "changed".  Flag that so the result is not read as a real diff.
+    if not decrypt and any(old.is_secure or new.is_secure for old, new in changed):
+        table.caption = (
+            "SecureString values cannot be compared without --decrypt; shown as changed."
+        )
 
     return table
 
@@ -167,7 +175,7 @@ def render_copy_plan(
         A :class:`rich.table.Table`.
     """
     table = Table(
-        title=f"[bold]Copy plan:[/] {source_prefix}  →  {dest_prefix}",
+        title=f"[bold]Copy plan:[/] {escape(source_prefix)}  →  {escape(dest_prefix)}",
         show_lines=False,
     )
     table.add_column("Source Path", style="cyan")
@@ -176,7 +184,13 @@ def render_copy_plan(
 
     for param in sorted(source_params, key=lambda p: p.path):
         dest_path = dest_prefix.rstrip("/") + "/" + _relative(param.path, source_prefix)
-        table.add_row(param.path, dest_path, param.type)
+        # Flag SecureString rows: they require --decrypt to copy the real value.
+        type_cell: str | Text = (
+            Text(f"{param.type} (needs --decrypt)", style="bold yellow")
+            if param.is_secure
+            else escape(param.type)
+        )
+        table.add_row(escape(param.path), escape(dest_path), type_cell)
 
     return table
 

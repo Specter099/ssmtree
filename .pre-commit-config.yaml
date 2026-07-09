@@ -1,0 +1,21 @@
+# Local pre-commit hooks. Install with:  pre-commit install
+# Versions are pinned to match the CI toolchain (see constraints-dev.txt).
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.20
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 26.5.1
+    hooks:
+      - id: black
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.2.0
+    hooks:
+      - id: mypy
+        files: ^src/
+        args: [--strict, --ignore-missing-imports]
+        additional_dependencies: ["boto3-stubs[ssm]"]

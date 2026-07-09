@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,11 +9,32 @@ description = "Render AWS SSM Parameter Store as a colorized terminal tree"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
+authors = [{ name = "Specter099" }]
+keywords = ["aws", "ssm", "parameter-store", "cli", "tree", "boto3", "secrets"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
 dependencies = [
     "click>=8.1",
     "rich>=13.0",
     "boto3>=1.26",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Specter099/ssmtree"
+Repository = "https://github.com/Specter099/ssmtree"
+Issues = "https://github.com/Specter099/ssmtree/issues"
+Changelog = "https://github.com/Specter099/ssmtree/blob/main/CHANGELOG.md"
 
 [project.scripts]
 ssmtree = "ssmtree.cli:main"
@@ -22,11 +43,12 @@ ssmtree = "ssmtree.cli:main"
 dev = [
     "pytest>=7",
     "pytest-cov",
-    "moto[ssm]>=4",
+    "moto[ssm]>=5",
     "black",
     "ruff",
     "mypy",
     "boto3-stubs[ssm]",
+    "pip-audit",
 ]
 
 [tool.setuptools.packages.find]

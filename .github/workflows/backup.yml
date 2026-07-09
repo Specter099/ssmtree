@@ -5,10 +5,16 @@ on:
   workflow_dispatch:
 jobs:
   backup:
+    # Supply-chain note: `@main` is a mutable ref. Pin to a commit SHA of
+    # Specter099/.github once available (kept as a branch ref here only because
+    # the SHA could not be resolved at edit time).
     uses: Specter099/.github/.github/workflows/repo-backup.yml@main
     with:
       s3-bucket: github-repo-backup-1b114b0d7fd4
-    secrets: inherit
+    # The reusable workflow declares no `workflow_call` secrets and obtains
+    # AWS_ROLE_ARN from its GitHub environment via OIDC, so nothing needs to be
+    # inherited. Dropping `secrets: inherit` avoids exposing every repo/org
+    # secret to the called workflow (least privilege).
     permissions:
       id-token: write
       contents: read

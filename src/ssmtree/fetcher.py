@@ -2,40 +2,48 @@
 
 from __future__ import annotations
 
-import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
+from ssmtree.errors import ClientCreationError, sanitize_error
 from ssmtree.models import Parameter
 
 if TYPE_CHECKING:
     from mypy_boto3_ssm import SSMClient
-
-_ARN_RE = re.compile(r"arn:aws[a-zA-Z-]*:[a-zA-Z0-9-]+:\S+")
-_ACCOUNT_RE = re.compile(r"\b\d{12}\b")
 
 
 class FetchError(Exception):
     """Raised when the SSM API call fails."""
 
 
-def _sanitize_error(msg: str) -> str:
-    """Strip ARNs and AWS account IDs from error messages."""
-    msg = _ARN_RE.sub("arn:***", msg)
-    msg = _ACCOUNT_RE.sub("***", msg)
-    return msg
-
-
 _RETRY_CONFIG = Config(retries={"max_attempts": 5, "mode": "adaptive"})
 
 
-def make_client(profile: str | None, region: str | None) -> SSMClient:
-    """Create a boto3 SSM client with retry configuration."""
-    session = boto3.Session(profile_name=profile, region_name=region)
-    return session.client("ssm", config=_RETRY_CONFIG)  # type: ignore[return-value]
+def make_client(
+    profile: str | None,
+    region: str | None,
+    endpoint_url: str | None = None,
+) -> SSMClient:
+    """Create a boto3 SSM client with retry configuration.
+
+    Args:
+        profile:      AWS named profile to use.
+        region:       AWS region override.
+        endpoint_url: Custom SSM endpoint (e.g. a localstack or VPC endpoint).
+
+    Raises:
+        ClientCreationError: If the profile is unknown or no region can be
+            resolved.  Callers surface this as a clean message rather than
+            letting a raw botocore traceback reach the user.
+    """
+    try:
+        session = boto3.Session(profile_name=profile, region_name=region)
+        return session.client("ssm", config=_RETRY_CONFIG, endpoint_url=endpoint_url)
+    except BotoCoreError as exc:
+        raise ClientCreationError(sanitize_error(str(exc))) from exc
 
 
 def fetch_parameters(
@@ -43,6 +51,7 @@ def fetch_parameters(
     decrypt: bool = False,
     profile: str | None = None,
     region: str | None = None,
+    endpoint_url: str | None = None,
 ) -> list[Parameter]:
     """Fetch all SSM parameters under *prefix* (recursive).
 
@@ -51,16 +60,22 @@ def fetch_parameters(
         decrypt: If True, decrypt SecureString values.
         profile: AWS named profile to use.
         region: AWS region override.
+        endpoint_url: Custom SSM endpoint URL.
 
     Returns:
         List of :class:`Parameter` objects sorted by path.
 
     Raises:
-        FetchError: On any AWS API error.
+        FetchError: On any AWS API error, including client-creation failures
+            such as an unknown profile or unresolved region.
     """
-    client = make_client(profile, region)
+    try:
+        client = make_client(profile, region, endpoint_url)
+    except ClientCreationError as exc:
+        raise FetchError(str(exc)) from exc
+
     params: list[Parameter] = []
-    kwargs: dict = {
+    kwargs: dict[str, Any] = {
         "Path": prefix,
         "Recursive": True,
         "WithDecryption": decrypt,
@@ -88,7 +103,7 @@ def fetch_parameters(
                 break
             kwargs["NextToken"] = next_token
     except (ClientError, BotoCoreError) as exc:
-        sanitized = _sanitize_error(str(exc))
+        sanitized = sanitize_error(str(exc))
         raise FetchError(f"Failed to fetch parameters from SSM: {sanitized}") from exc
 
     # get_parameters_by_path never returns a parameter AT the prefix path itself
@@ -115,12 +130,12 @@ def fetch_parameters(
                 )
             except ClientError as exc:
                 if exc.response["Error"]["Code"] != "ParameterNotFound":
-                    sanitized = _sanitize_error(str(exc))
+                    sanitized = sanitize_error(str(exc))
                     raise FetchError(
                         f"Failed to fetch parameters from SSM: {sanitized}"
                     ) from exc
             except BotoCoreError as exc:
-                sanitized = _sanitize_error(str(exc))
+                sanitized = sanitize_error(str(exc))
                 raise FetchError(
                     f"Failed to fetch parameters from SSM: {sanitized}"
                 ) from exc

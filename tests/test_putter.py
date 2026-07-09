@@ -10,7 +10,8 @@ import pytest
 from botocore.exceptions import BotoCoreError
 from moto import mock_aws
 
-from ssmtree.putter import PutError, _sanitize_error, put_parameter
+from ssmtree.errors import sanitize_error as _sanitize_error
+from ssmtree.putter import PutError, put_parameter
 
 
 @pytest.fixture(autouse=True)

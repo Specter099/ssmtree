@@ -8,7 +8,8 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from ssmtree.fetcher import FetchError, _sanitize_error, fetch_parameters
+from ssmtree.errors import sanitize_error as _sanitize_error
+from ssmtree.fetcher import FetchError, fetch_parameters
 from ssmtree.models import Parameter
 
 
@@ -177,6 +178,21 @@ def test_fetch_exact_leaf_secure_string():
     assert len(params) == 1
     assert params[0].type == "SecureString"
     assert params[0].path == "/app/secret"
+
+
+def test_make_client_invalid_profile_raises_client_creation_error():
+    """An unknown --profile must raise ClientCreationError, not a raw traceback."""
+    from ssmtree.errors import ClientCreationError
+    from ssmtree.fetcher import make_client
+
+    with pytest.raises(ClientCreationError):
+        make_client("nonexistent-profile-xyz-123", "us-east-1")
+
+
+def test_fetch_invalid_profile_raises_fetch_error():
+    """fetch_parameters wraps client-creation failures as FetchError."""
+    with pytest.raises(FetchError):
+        fetch_parameters("/app", profile="nonexistent-profile-xyz-123")
 
 
 class TestSanitizeError:
