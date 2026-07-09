@@ -1,64 +1,61 @@
 # Publishing to PyPI
 
-## Prerequisites
+`ssmtree` publishes to PyPI automatically via **Trusted Publishing (OIDC)** when a
+GitHub Release is published. No API token is stored or needed.
 
-- A [PyPI account](https://pypi.org/account/register/)
-- A PyPI API token (create one at https://pypi.org/manage/account/token/)
-- Python virtual environment set up for this project
+## Release process (recommended)
 
-## Steps
+1. **Bump the version** in both places (they must match):
+   - `version` in `pyproject.toml`
+   - `__version__` in `src/ssmtree/__init__.py`
 
-### 1. Activate the virtual environment
+2. **Update `CHANGELOG.md`**: move the `[Unreleased]` entries under a new
+   `## [X.Y.Z] - YYYY-MM-DD` heading and add a link reference at the bottom.
+
+3. **Merge to `main`** via a pull request (CI must pass).
+
+4. **Create a GitHub Release** with a tag `vX.Y.Z` (matching the version).
+   Publishing the release triggers `.github/workflows/publish.yml`, which:
+   - runs the test suite (Python 3.11 and 3.12),
+   - builds the sdist + wheel,
+   - publishes to PyPI via the `pypa/gh-action-pypi-publish` OIDC action
+     (GitHub environment `pypi`).
+
+### One-time PyPI setup
+
+Trusted Publishing must be configured once on the PyPI project side:
+PyPI → project **ssmtree** → *Settings → Publishing → Add a new publisher*:
+
+- Owner: `Specter099`
+- Repository: `ssmtree`
+- Workflow: `publish.yml`
+- Environment: `pypi`
+
+## Testing a build locally (before releasing)
 
 ```bash
 source .venv/bin/activate
-```
-
-### 2. Install build tools
-
-```bash
 pip install build twine
-```
-
-### 3. Build the distribution
-
-```bash
-python -m build
-```
-
-This creates two files in the `dist/` directory:
-- `ssmtree-<version>.tar.gz` (source distribution)
-- `ssmtree-<version>-py3-none-any.whl` (wheel)
-
-### 4. Upload to PyPI
-
-```bash
-twine upload dist/* -u __token__ -p pypi-YOUR_API_TOKEN_HERE
-```
-
-- Username is literally `__token__`
-- Password is your PyPI API token (starts with `pypi-`)
-
-## Updating the version
-
-Before publishing a new release, update the `version` field in `pyproject.toml`, then clean and rebuild:
-
-```bash
 rm -rf dist/
+python -m build          # writes dist/ssmtree-<version>.tar.gz and .whl
+twine check dist/*       # validate metadata / long description
+pip install dist/ssmtree-<version>-py3-none-any.whl   # smoke-test in a clean venv
+ssmtree --version
+```
+
+## Manual upload (fallback only)
+
+Use only if OIDC publishing is unavailable. Requires a PyPI API token
+(`pypi-…`) and skips the CI gates:
+
+```bash
 python -m build
 twine upload dist/* -u __token__ -p pypi-YOUR_API_TOKEN_HERE
 ```
 
-## Testing with TestPyPI (optional)
-
-To test the upload before publishing to the real PyPI:
+### TestPyPI (optional dry run)
 
 ```bash
 twine upload --repository testpypi dist/* -u __token__ -p pypi-YOUR_TEST_TOKEN
-```
-
-Then install from TestPyPI to verify:
-
-```bash
 pip install --index-url https://test.pypi.org/simple/ ssmtree
 ```

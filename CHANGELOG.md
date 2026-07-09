@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-09
+
 ### Security
 
 - **copy**: refuse to copy `SecureString` parameters without `--decrypt`.
@@ -23,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `put` command to write a single parameter (`String`/`SecureString`/`StringList`),
+  with `--stdin` for secret input and overwrite confirmation.
 - `--endpoint-url` option on all commands for localstack / custom endpoints.
 - Client-creation failures (unknown profile, unresolved region) now abort with
   a clean message instead of a raw traceback.
@@ -66,4 +70,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - AWS profile and region selection
 - 86 tests with 94% coverage
 
+[0.4.0]: https://github.com/Specter099/ssmtree/releases/tag/v0.4.0
 [0.1.0]: https://github.com/Specter099/ssmtree/releases/tag/v0.1.0
