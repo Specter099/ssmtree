@@ -5,14 +5,19 @@ from __future__ import annotations
 import json
 import re
 import sys
+from typing import TYPE_CHECKING, NoReturn
 
 import click
 from rich.console import Console
 from rich.markup import escape
 
+if TYPE_CHECKING:
+    from mypy_boto3_ssm import SSMClient
+
 from ssmtree import __version__
-from ssmtree.copier import CopyError, copy_namespace
+from ssmtree.copier import copy_namespace
 from ssmtree.differ import diff_namespaces
+from ssmtree.errors import ClientCreationError
 from ssmtree.fetcher import FetchError, fetch_parameters, make_client
 from ssmtree.formatters import render_copy_plan, render_diff, render_tree
 from ssmtree.putter import PutError, put_parameter
@@ -25,9 +30,19 @@ _REDACTED = "***REDACTED***"
 _SSM_PATH_RE = re.compile(r"^(?:/[a-zA-Z0-9_.-]+)+$")
 
 
-def _abort(msg: str) -> None:
+def _abort(msg: str) -> NoReturn:
     console.print(f"[bold red]Error:[/] {escape(msg)}")
     sys.exit(1)
+
+
+def _create_client(
+    profile: str | None, region: str | None, endpoint_url: str | None
+) -> SSMClient:
+    """Create an SSM client, aborting with a clean message on failure."""
+    try:
+        return make_client(profile, region, endpoint_url)
+    except ClientCreationError as exc:
+        _abort(str(exc))
 
 
 def _validate_path(path: str) -> None:
@@ -103,6 +118,7 @@ class _DefaultPathGroup(click.Group):
 @click.option("--decrypt", "-d", is_flag=True, default=False, help="Decrypt SecureStrings.")
 @click.option("--profile", default=None, help="AWS named profile.")
 @click.option("--region", default=None, help="AWS region.")
+@click.option("--endpoint-url", default=None, help="Custom SSM endpoint URL (e.g. localstack).")
 @click.option(
     "--filter", "-f", "filter_pattern", default=None, help="Glob filter on parameter paths."
 )
@@ -129,6 +145,7 @@ def main(
     decrypt: bool,
     profile: str | None,
     region: str | None,
+    endpoint_url: str | None,
     filter_pattern: str | None,
     show_values: bool,
     output: str,
@@ -155,10 +172,11 @@ def main(
     _validate_path(path)
 
     try:
-        params = fetch_parameters(path, decrypt=decrypt, profile=profile, region=region)
+        params = fetch_parameters(
+            path, decrypt=decrypt, profile=profile, region=region, endpoint_url=endpoint_url
+        )
     except FetchError as exc:
         _abort(str(exc))
-        return
 
     if filter_pattern:
         tree = build_tree(params, root_path=path)
@@ -168,7 +186,7 @@ def main(
 
     if output == "json":
         if include_secrets:
-            console.print(
+            err_console.print(
                 "[bold yellow]WARNING:[/] Secret values will be included in output.",
             )
         data = [
@@ -193,6 +211,7 @@ def main(
 @click.option("--decrypt", "-d", is_flag=True, default=False, help="Decrypt SecureStrings.")
 @click.option("--profile", default=None, help="AWS named profile.")
 @click.option("--region", default=None, help="AWS region.")
+@click.option("--endpoint-url", default=None, help="Custom SSM endpoint URL (e.g. localstack).")
 @click.option(
     "--show-values/--hide-values",
     default=True,
@@ -216,6 +235,7 @@ def diff_cmd(
     decrypt: bool,
     profile: str | None,
     region: str | None,
+    endpoint_url: str | None,
     show_values: bool,
     include_secrets: bool,
     output: str,
@@ -232,17 +252,20 @@ def diff_cmd(
     _validate_path(path2)
 
     try:
-        params1 = fetch_parameters(path1, decrypt=decrypt, profile=profile, region=region)
-        params2 = fetch_parameters(path2, decrypt=decrypt, profile=profile, region=region)
+        params1 = fetch_parameters(
+            path1, decrypt=decrypt, profile=profile, region=region, endpoint_url=endpoint_url
+        )
+        params2 = fetch_parameters(
+            path2, decrypt=decrypt, profile=profile, region=region, endpoint_url=endpoint_url
+        )
     except FetchError as exc:
         _abort(str(exc))
-        return
 
     added, removed, changed = diff_namespaces(params1, params2, path1, path2)
 
     if output == "json":
         if include_secrets:
-            console.print(
+            err_console.print(
                 "[bold yellow]WARNING:[/] Secret values will be included in output.",
             )
         data = {
@@ -291,6 +314,7 @@ def diff_cmd(
 )
 @click.option("--profile", default=None, help="AWS named profile.")
 @click.option("--region", default=None, help="AWS region.")
+@click.option("--endpoint-url", default=None, help="Custom SSM endpoint URL (e.g. localstack).")
 @click.option(
     "--overwrite/--no-overwrite",
     default=False,
@@ -309,6 +333,7 @@ def copy_cmd(
     decrypt: bool,
     profile: str | None,
     region: str | None,
+    endpoint_url: str | None,
     overwrite: bool,
     dry_run: bool,
     kms_key_id: str | None,
@@ -326,14 +351,26 @@ def copy_cmd(
     _validate_path(dest)
 
     try:
-        params = fetch_parameters(source, decrypt=decrypt, profile=profile, region=region)
+        params = fetch_parameters(
+            source, decrypt=decrypt, profile=profile, region=region, endpoint_url=endpoint_url
+        )
     except FetchError as exc:
         _abort(str(exc))
-        return
 
     if not params:
         console.print(f"[yellow]No parameters found under {escape(source)}[/]")
         return
+
+    # Copying SecureStrings without --decrypt would write the source KMS
+    # ciphertext back as the destination value (which AWS re-encrypts),
+    # silently corrupting the secret.  Refuse rather than corrupt.
+    secure_count = sum(1 for p in params if p.is_secure)
+    if secure_count and not decrypt:
+        _abort(
+            f"Source contains {secure_count} SecureString parameter(s). "
+            "Copying without --decrypt would write encrypted ciphertext as the "
+            "destination value. Re-run with --decrypt to copy secret values."
+        )
 
     if dry_run:
         table = render_copy_plan(params, source, dest)
@@ -351,21 +388,17 @@ def copy_cmd(
             console.print("[dim]Aborted.[/]")
             return
 
-    ssm_client = make_client(profile, region)
+    ssm_client = _create_client(profile, region, endpoint_url)
 
-    try:
-        written, failed = copy_namespace(
-            source_params=params,
-            source_prefix=source,
-            dest_prefix=dest,
-            ssm_client=ssm_client,
-            overwrite=overwrite,
-            dry_run=False,
-            kms_key_id=kms_key_id,
-        )
-    except CopyError as exc:
-        _abort(str(exc))
-        return
+    written, failed = copy_namespace(
+        source_params=params,
+        source_prefix=source,
+        dest_prefix=dest,
+        ssm_client=ssm_client,
+        overwrite=overwrite,
+        dry_run=False,
+        kms_key_id=kms_key_id,
+    )
 
     console.print(
         f"[bold green]Copied {len(written)} parameter(s)[/] "
@@ -375,6 +408,7 @@ def copy_cmd(
         console.print(f"[bold red]Failed {len(failed)} parameter(s):[/]")
         for path, err in failed:
             console.print(f"  {escape(path)}: {escape(err)}")
+        sys.exit(1)
 
 
 @main.command("put")
@@ -382,6 +416,7 @@ def copy_cmd(
 @click.argument("value", required=False, default=None)
 @click.option("--profile", default=None, help="AWS named profile.")
 @click.option("--region", default=None, help="AWS region.")
+@click.option("--endpoint-url", default=None, help="Custom SSM endpoint URL (e.g. localstack).")
 @click.option(
     "--type",
     "-t",
@@ -412,6 +447,7 @@ def put_cmd(
     value: str | None,
     profile: str | None,
     region: str | None,
+    endpoint_url: str | None,
     param_type: str,
     secure: bool,
     overwrite: bool,
@@ -480,7 +516,7 @@ def put_cmd(
             console.print("[dim]Aborted.[/]")
             return
 
-    ssm_client = make_client(profile, region)
+    ssm_client = _create_client(profile, region, endpoint_url)
 
     try:
         version = put_parameter(

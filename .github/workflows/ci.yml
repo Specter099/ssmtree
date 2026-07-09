@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: ["**"]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Lint & Test (Python ${{ matrix.python-version }})
@@ -23,19 +26,23 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        # -c pins the full transitive graph (constraints-dev.txt) so CI installs
+        # are reproducible. pip-audit is included via the dev extra.
+        run: pip install -e ".[dev]" -c constraints-dev.txt
 
       - name: Lint with ruff
         run: ruff check src tests
 
+      - name: Type-check with mypy
+        run: mypy src
+
       - name: Audit dependencies
-        run: |
-          pip install --upgrade pip
-          pip install pip-audit
-          pip-audit --ignore-vuln CVE-2026-4539 --ignore-vuln CVE-2026-3219
+        # Suppressed CVEs have no fixed upstream release yet. Re-check on every
+        # dependency bump and drop the --ignore-vuln flag once patched.
+        run: pip-audit --ignore-vuln CVE-2026-4539 --ignore-vuln CVE-2026-3219
 
       - name: Run tests
-        run: pytest --cov=ssmtree --cov-report=term-missing
+        run: pytest --cov=ssmtree --cov-report=term-missing --cov-fail-under=90
 
       - name: Upload coverage report
         if: matrix.python-version == '3.11'

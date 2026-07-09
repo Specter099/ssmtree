@@ -225,16 +225,42 @@ class TestCopyCommand:
 
     def test_dry_run_shows_plan(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
-            result = runner.invoke(main, ["copy", "--dry-run", "/app/prod", "/app/staging"])
+            result = runner.invoke(
+                main, ["copy", "--decrypt", "--dry-run", "/app/prod", "/app/staging"]
+            )
         assert result.exit_code == 0
         assert "Dry run" in result.output or "dry" in result.output.lower()
 
     def test_dry_run_does_not_call_make_client(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
             with patch("ssmtree.cli.make_client") as mock_make:
-                result = runner.invoke(main, ["copy", "--dry-run", "/app/prod", "/app/staging"])
+                result = runner.invoke(
+                    main, ["copy", "--decrypt", "--dry-run", "/app/prod", "/app/staging"]
+                )
         assert result.exit_code == 0
         mock_make.assert_not_called()
+
+    def test_copy_refuses_securestring_without_decrypt(self, runner):
+        """Copying SecureStrings without --decrypt must abort, not corrupt secrets."""
+        with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
+            with patch("ssmtree.cli.make_client") as mock_make:
+                with patch("ssmtree.cli.copy_namespace") as mock_copy:
+                    result = runner.invoke(main, ["copy", "--yes", "/app/prod", "/app/staging"])
+        assert result.exit_code != 0
+        assert "--decrypt" in result.output
+        mock_make.assert_not_called()
+        mock_copy.assert_not_called()
+
+    def test_copy_allows_non_secret_without_decrypt(self, runner):
+        """A source with no SecureStrings copies fine without --decrypt."""
+        with patch("ssmtree.cli.fetch_parameters", return_value=STAGING_PARAMS):
+            with patch("ssmtree.cli.make_client"):
+                with patch(
+                    "ssmtree.cli.copy_namespace", return_value=(["/prod/a"], [])
+                ) as mock_copy:
+                    result = runner.invoke(main, ["copy", "--yes", "/app/staging", "/app/prod"])
+        assert result.exit_code == 0
+        mock_copy.assert_called_once()
 
     def test_empty_source_shows_message(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=[]):
@@ -249,7 +275,9 @@ class TestCopyCommand:
                     "ssmtree.cli.copy_namespace",
                     return_value=(["/staging/a"], []),
                 ) as mock_copy:
-                    result = runner.invoke(main, ["copy", "--yes", "/app/prod", "/app/staging"])
+                    result = runner.invoke(
+                        main, ["copy", "--decrypt", "--yes", "/app/prod", "/app/staging"]
+                    )
         assert result.exit_code == 0
         mock_copy.assert_called_once()
 
@@ -260,7 +288,9 @@ class TestCopyCommand:
                     "ssmtree.cli.copy_namespace",
                     return_value=(["/staging/a"], []),
                 ):
-                    result = runner.invoke(main, ["copy", "/app/prod", "/app/staging"], input="n\n")
+                    result = runner.invoke(
+                        main, ["copy", "--decrypt", "/app/prod", "/app/staging"], input="n\n"
+                    )
         assert result.exit_code == 0
         assert "Aborted" in result.output
 
@@ -278,8 +308,11 @@ class TestCopyCommand:
                         [("/staging/b", "AccessDenied")],
                     ),
                 ):
-                    result = runner.invoke(main, ["copy", "--yes", "/app/prod", "/app/staging"])
-        assert result.exit_code == 0
+                    result = runner.invoke(
+                        main, ["copy", "--decrypt", "--yes", "/app/prod", "/app/staging"]
+                    )
+        # A partial copy failure must be reported AND surfaced as a nonzero exit.
+        assert result.exit_code != 0
         assert "Failed 1" in result.output
 
 
@@ -655,16 +688,30 @@ class TestPutCommand:
         mock_make.assert_called_once()
 
     def test_put_forwards_profile_and_region(self, runner):
-        """--profile and --region are forwarded to make_client."""
+        """--profile, --region and --endpoint-url are forwarded to make_client."""
         with patch("ssmtree.cli.make_client") as mock_make:
             with patch("ssmtree.cli.put_parameter", return_value=1):
                 result = runner.invoke(
                     main,
                     ["put", "--profile", "myprofile", "--region", "eu-west-1",
+                     "--endpoint-url", "http://localhost:4566",
                      "/app/prod/key", "val"],
                 )
         assert result.exit_code == 0
-        mock_make.assert_called_once_with("myprofile", "eu-west-1")
+        mock_make.assert_called_once_with("myprofile", "eu-west-1", "http://localhost:4566")
+
+    def test_put_bad_client_aborts_cleanly(self, runner):
+        """A client-creation failure (bad profile/region) aborts cleanly, no traceback."""
+        from ssmtree.errors import ClientCreationError
+
+        with patch(
+            "ssmtree.cli.make_client",
+            side_effect=ClientCreationError("could not resolve region"),
+        ):
+            result = runner.invoke(main, ["put", "/app/prod/key", "val"])
+        assert result.exit_code == 1
+        assert "Error:" in result.output
+        assert not isinstance(result.exception, ClientCreationError)
 
     # --- Full integration ---
 

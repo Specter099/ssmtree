@@ -19,7 +19,7 @@ class Parameter:
     value: str             # parameter value (may be "***" if SecureString not decrypted)
     type: ParameterType    # "String" | "SecureString" | "StringList"
     version: int
-    last_modified: datetime
+    last_modified: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.type not in PARAMETER_TYPES:

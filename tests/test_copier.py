@@ -149,3 +149,32 @@ class TestCopyNamespace:
         written, failed = copy_namespace([], "/prod", "/staging", client)
         assert written == []
         assert failed == []
+
+    def test_copy_error_message_is_sanitized(self):
+        """ClientError messages must have ARNs, account IDs, and values scrubbed."""
+        from botocore.exceptions import ClientError
+
+        class FailingClient:
+            def put_parameter(self, **kwargs):
+                raise ClientError(
+                    {
+                        "Error": {
+                            "Code": "AccessDeniedException",
+                            "Message": (
+                                "User arn:aws:iam::123456789012:user/bob is not authorized; "
+                                "value my-secret-value was rejected"
+                            ),
+                        }
+                    },
+                    "PutParameter",
+                )
+
+        params = [_param("/prod/key", "my-secret-value", type_="SecureString")]
+        written, failed = copy_namespace(params, "/prod", "/staging", FailingClient())
+
+        assert written == []
+        assert len(failed) == 1
+        _, msg = failed[0]
+        assert "123456789012" not in msg
+        assert "arn:aws:iam" not in msg
+        assert "my-secret-value" not in msg

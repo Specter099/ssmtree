@@ -29,6 +29,41 @@ The findings below are therefore mostly about closing gaps in an otherwise consi
 
 ---
 
+## Remediation status
+
+All findings were remediated in this branch except three items that require
+access or decisions outside the codebase (noted below).
+
+| # | Finding | Status |
+|---|---------|--------|
+| 1 | Copy corrupts SecureStrings without `--decrypt` | ✅ Fixed — `copy` now refuses; verified end-to-end |
+| 2 | Copy errors not sanitized | ✅ Fixed — shared `ssmtree.errors.sanitize_error`, with test |
+| 3 | Uncaught traceback on bad profile/region | ✅ Fixed — `make_client` wrapped in `ClientCreationError`, with tests |
+| 4 | Publish workflow mutable action refs | ✅ Fixed — `publish.yml` and `claude.yml` SHA-pinned |
+| 5 | Backup `secrets: inherit` + `@main` | ⚠️ Partial — `secrets: inherit` removed (least privilege); `@main` SHA-pin deferred (org-repo SHA not resolvable here) |
+| 6 | `copy` exits 0 on write failure | ✅ Fixed — non-zero exit, with test |
+| 7 | No `permissions:` block in `ci.yml` | ✅ Fixed — `contents: read` |
+| 8 | No lockfile / unpinned deps | ✅ Fixed — `constraints-dev.txt`, `pip-audit` pinned via dev extra, moto `>=5` |
+| 9 | mypy not run / coverage not gated | ✅ Fixed — mypy step + `--cov-fail-under=90`; 5 pre-existing mypy errors fixed |
+| 10 | `--include-secrets` warning on stdout | ✅ Fixed — moved to stderr; verified end-to-end |
+| 11 | Hygiene (docs, metadata, escaping, endpoint-url, pre-commit) | ✅ Fixed — see notes below |
+
+**Deferred (not code-fixable in this environment):**
+- **Finding 5 — `@main` SHA pin:** the org reusable workflow `Specter099/.github`
+  could not be resolved to a commit SHA without authentication. The higher-risk
+  `secrets: inherit` was removed; a comment in `backup.yml` records the remaining
+  pin step.
+- **CODEOWNERS bus factor & branch protection:** these are repo/organization
+  settings, not code. Add a second reviewer to `CODEOWNERS` and enable required
+  status checks on `main` in GitHub settings.
+
+Verification: `ruff check`, `mypy --strict src`, and `pytest` (200 tests, 94%
+coverage) all pass; `python -m build` produces a valid wheel; the copy-refusal,
+decrypt-copy, and JSON-stdout behaviors were exercised end-to-end against a moto
+backend.
+
+---
+
 ## High-priority findings
 
 ### 1. `copy` silently corrupts SecureStrings when `--decrypt` is omitted

@@ -93,9 +93,16 @@ ssmtree copy /app/prod /app/staging
 # Copy with overwrite, skip confirmation
 ssmtree copy --yes --overwrite /app/prod /app/staging
 
+# Copying SecureStrings requires --decrypt (see "Secret handling" below)
+ssmtree copy --decrypt /app/prod /app/staging
+
 # Copy with decryption and re-encryption under a new KMS key
 ssmtree copy --decrypt --kms-key-id alias/my-key /app/prod /app/staging
 ```
+
+> **Note:** `copy` refuses to copy `SecureString` parameters unless `--decrypt`
+> is given. Without it, the source value is still-encrypted KMS ciphertext, and
+> writing that back would silently corrupt the destination secret.
 
 ## Options
 
@@ -104,6 +111,7 @@ ssmtree copy --decrypt --kms-key-id alias/my-key /app/prod /app/staging
 | `--decrypt` / `-d` | all | Decrypt SecureString values |
 | `--profile` | all | AWS named profile to use |
 | `--region` | all | AWS region override |
+| `--endpoint-url` | all | Custom SSM endpoint URL (e.g. localstack) |
 | `--show-values` / `--hide-values` | `main`, `diff` | Show or hide parameter values (default: show) |
 | `--filter PATTERN` / `-f` | `main` | Glob filter on parameter paths |
 | `--output` | `main`, `diff` | Output format: `tree`/`table` (default) or `json` |
@@ -112,6 +120,20 @@ ssmtree copy --decrypt --kms-key-id alias/my-key /app/prod /app/staging
 | `--dry-run` | `copy` | Show what would be copied without writing |
 | `--kms-key-id` | `copy` | KMS key for SecureString parameters at destination |
 | `--yes` / `-y` | `copy` | Skip confirmation prompt |
+
+## Secret handling
+
+SecureString values are protected by default and revealed only when you opt in:
+
+- **Human-readable output** (tree, diff table): SecureStrings show as `[redacted]`
+  unless you pass `--decrypt`.
+- **JSON output** (`--output json`): SecureStrings show as `***REDACTED***`
+  unless you pass `--include-secrets` (which also prints a warning to stderr).
+- **`copy`**: requires `--decrypt` to copy SecureStrings at all, so the real
+  plaintext (not KMS ciphertext) is written to the destination.
+
+A SecureString diff without `--decrypt` always shows as *changed* because KMS
+ciphertext is non-deterministic; decrypt to compare real values.
 
 ## Development
 
