@@ -28,7 +28,11 @@ jobs:
       - name: Install dependencies
         # -c pins the full transitive graph (constraints-dev.txt) so CI installs
         # are reproducible. pip-audit is included via the dev extra.
-        run: pip install -e ".[dev]" -c constraints-dev.txt
+        # setuptools is upgraded past PYSEC-2026-3447 (fixed in 83.0.0); the
+        # ambient runner setuptools is older and pip-audit flags it.
+        run: |
+          pip install -e ".[dev]" -c constraints-dev.txt
+          python -m pip install --upgrade "setuptools>=83.0.0"
 
       - name: Lint with ruff
         run: ruff check src tests
