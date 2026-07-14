@@ -5,6 +5,18 @@ GitHub Release is published. No API token is stored or needed.
 
 ## Release process (recommended)
 
+Steps 1–2 are automated by the release script — run it from the repo root:
+
+```bash
+python scripts/release.py 0.5.0 --dry-run   # preview the changes
+python scripts/release.py 0.5.0             # bump + changelog + verify + commit
+```
+
+It bumps the version in both files, rolls the `CHANGELOG.md` `[Unreleased]`
+section into a dated one, runs the quality gates + build, and commits on a
+`release/vX.Y.Z` branch. (Inside Claude Code, the `/release` skill wraps this
+and drives the PR/Release/publish through to PyPI.) To do it by hand instead:
+
 1. **Bump the version** in both places (they must match):
    - `version` in `pyproject.toml`
    - `__version__` in `src/ssmtree/__init__.py`
