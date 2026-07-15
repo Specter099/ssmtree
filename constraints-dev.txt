@@ -135,7 +135,7 @@ rich==15.0.0
     # via
     #   ssmtree (pyproject.toml)
     #   pip-audit
-ruff==0.15.20
+ruff==0.15.21
     # via ssmtree (pyproject.toml)
 s3transfer==0.19.0
     # via boto3
