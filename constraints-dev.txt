@@ -10,7 +10,7 @@ boto3==1.43.44
     # via
     #   ssmtree (pyproject.toml)
     #   moto
-boto3-stubs==1.43.44
+boto3-stubs==1.43.49
     # via ssmtree (pyproject.toml)
 botocore==1.43.44
     # via
