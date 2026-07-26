@@ -11,10 +11,10 @@ jobs:
     uses: Specter099/.github/.github/workflows/repo-backup.yml@main
     with:
       s3-bucket: github-repo-backup-1b114b0d7fd4
-    # The reusable workflow declares no `workflow_call` secrets and obtains
-    # AWS_ROLE_ARN from its GitHub environment via OIDC, so nothing needs to be
-    # inherited. Dropping `secrets: inherit` avoids exposing every repo/org
-    # secret to the called workflow (least privilege).
+    # The reusable workflow's `environment:` binding only scopes which
+    # environment's secrets apply once inside that job - it does not pull
+    # secrets from the caller. AWS_ROLE_ARN must be passed explicitly.
+    secrets: inherit
     permissions:
       id-token: write
       contents: read
