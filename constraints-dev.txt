@@ -10,7 +10,7 @@ boto3==1.43.44
     # via
     #   ssmtree (pyproject.toml)
     #   moto
-boto3-stubs==1.43.44
+boto3-stubs==1.43.49
     # via ssmtree (pyproject.toml)
 botocore==1.43.44
     # via
@@ -65,7 +65,7 @@ msgpack==1.2.1
     # via cachecontrol
 mypy==2.3.0
     # via ssmtree (pyproject.toml)
-mypy-boto3-ssm==1.43.42
+mypy-boto3-ssm==1.43.48
     # via boto3-stubs
 mypy-extensions==1.1.0
     # via
@@ -135,7 +135,7 @@ rich==15.0.0
     # via
     #   ssmtree (pyproject.toml)
     #   pip-audit
-ruff==0.15.20
+ruff==0.15.21
     # via ssmtree (pyproject.toml)
 s3transfer==0.19.1
     # via boto3
