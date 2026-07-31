@@ -31,7 +31,7 @@ click==8.4.2
     # via
     #   ssmtree (pyproject.toml)
     #   black
-coverage==7.15.0
+coverage==7.15.2
     # via pytest-cov
 cryptography==49.0.0
     # via moto
