@@ -65,7 +65,7 @@ msgpack==1.2.1
     # via cachecontrol
 mypy==2.2.0
     # via ssmtree (pyproject.toml)
-mypy-boto3-ssm==1.43.42
+mypy-boto3-ssm==1.43.48
     # via boto3-stubs
 mypy-extensions==1.1.0
     # via
