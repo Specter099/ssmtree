@@ -6,7 +6,7 @@ black==26.5.1
     # via ssmtree (pyproject.toml)
 boolean-py==5.0
     # via license-expression
-boto3==1.43.44
+boto3==1.43.64
     # via
     #   ssmtree (pyproject.toml)
     #   moto
