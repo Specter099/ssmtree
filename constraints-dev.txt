@@ -137,7 +137,7 @@ rich==15.0.0
     #   pip-audit
 ruff==0.16.0
     # via ssmtree (pyproject.toml)
-s3transfer==0.19.1
+s3transfer==0.19.2
     # via boto3
 six==1.17.0
     # via python-dateutil
