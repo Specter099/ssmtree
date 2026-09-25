@@ -1,3 +1,6 @@
+> **Historical (v0.1.0, 2026-02-25).** Superseded by
+> [SECURITY_OPERATIONAL_REVIEW.md](SECURITY_OPERATIONAL_REVIEW.md); kept for the record.
+
 # Security Audit Report — ssmtree
 
 **Date:** 2026-02-25

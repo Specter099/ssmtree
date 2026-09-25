@@ -25,5 +25,8 @@ def sanitize_error(msg: str, value: str | None = None) -> str:
     msg = _ARN_RE.sub("arn:***", msg)
     msg = _ACCOUNT_RE.sub("***", msg)
     if value:
-        msg = msg.replace(value, "***")
+        # Only replace whole-token occurrences: a plain substring replace of a
+        # short value (e.g. "a") would shred every matching letter in the message.
+        pattern = rf"(?<![A-Za-z0-9]){re.escape(value)}(?![A-Za-z0-9])"
+        msg = re.sub(pattern, "***", msg)
     return msg

@@ -41,6 +41,14 @@ class TestTruncate:
         v = "x" * 60
         assert _truncate(v) == v
 
+    def test_control_characters_escaped(self):
+        # Terminal escape sequences in values must never reach the terminal raw.
+        result = _truncate("a\x1b]52;c;ZXZpbA==\x07b\x9b2J")
+        assert "\x1b" not in result
+        assert "\x07" not in result
+        assert "\x9b" not in result
+        assert result == "a\\x1b]52;c;ZXZpbA==\\x07b\\x9b2J"
+
     def test_long_value_truncated(self):
         v = "x" * 61
         result = _truncate(v)
@@ -179,6 +187,13 @@ class TestRenderDiff:
         assert "plaintext-new" in output
         assert "[redacted]" not in output
 
+    def test_type_change_shows_both_types(self):
+        old = _param("/a/key", value="same")
+        new = _param("/b/key", value="same", type_="StringList")
+        output = _render_to_str(render_diff([], [], [(old, new)], "/a", "/b", show_values=True))
+        assert "[String]" in output
+        assert "[StringList]" in output
+
 
 class TestRenderCopyPlan:
     def test_returns_table(self):
@@ -192,3 +207,11 @@ class TestRenderCopyPlan:
         output = _render_to_str(table)
         assert "/prod/db/host" in output
         assert "/staging/db/host" in output
+
+    def test_single_leaf_source_maps_to_dest(self):
+        # Copying one leaf parameter (source == its own path) must plan the dest
+        # path itself, matching what copy_namespace actually writes.
+        params = [_param("/app/db/host")]
+        output = _render_to_str(render_copy_plan(params, "/app/db/host", "/app/db/host2"))
+        assert "/app/db/host2" in output
+        assert "//" not in output
