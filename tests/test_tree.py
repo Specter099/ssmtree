@@ -55,7 +55,7 @@ class TestBuildTree:
     def test_param_at_intermediate_node(self):
         """A parameter can exist at an intermediate path that also has children."""
         params = [
-            _param("/app/prod"),      # intermediate path also has a parameter
+            _param("/app/prod"),  # intermediate path also has a parameter
             _param("/app/prod/key"),
         ]
         root = build_tree(params, root_path="/app")
@@ -102,7 +102,7 @@ class TestBuildTree:
     def test_leaf_node_is_leaf(self):
         params = [_param("/app/key")]
         root = build_tree(params, root_path="/app")
-        assert root.children["key"].is_leaf
+        assert not root.children["key"].is_namespace
 
     def test_namespace_node_is_namespace(self):
         params = [_param("/app/db/host")]
