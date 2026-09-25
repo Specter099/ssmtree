@@ -1,10 +1,11 @@
 name: CI
 
 on:
+  # PRs cover feature branches; push covers main after merge. Triggering push
+  # on every branch as well would run the suite twice per PR update.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
-    branches: ["**"]
 
 permissions:
   contents: read
@@ -36,6 +37,9 @@ jobs:
 
       - name: Lint with ruff
         run: ruff check src tests
+
+      - name: Check formatting with black
+        run: black --check src tests
 
       - name: Type-check with mypy
         run: mypy src

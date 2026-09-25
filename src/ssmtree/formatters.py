@@ -197,4 +197,3 @@ def render_copy_plan(
         table.add_row(escape(param.path), escape(dest_path), type_cell)
 
     return table
-

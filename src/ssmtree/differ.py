@@ -47,9 +47,7 @@ def diff_namespaces(
     removed = [map1[k] for k in sorted(keys1 - keys2)]
     added = [map2[k] for k in sorted(keys2 - keys1)]
     changed: list[tuple[Parameter, Parameter]] = [
-        (map1[k], map2[k])
-        for k in sorted(keys1 & keys2)
-        if map1[k].value != map2[k].value
+        (map1[k], map2[k]) for k in sorted(keys1 & keys2) if map1[k].value != map2[k].value
     ]
 
     return added, removed, changed

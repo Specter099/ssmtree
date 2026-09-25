@@ -36,9 +36,7 @@ def _abort(msg: str) -> NoReturn:
     sys.exit(1)
 
 
-def _create_client(
-    profile: str | None, region: str | None, endpoint_url: str | None
-) -> SSMClient:
+def _create_client(profile: str | None, region: str | None, endpoint_url: str | None) -> SSMClient:
     """Create an SSM client, aborting with a clean message on failure."""
     try:
         return make_client(profile, region, endpoint_url)

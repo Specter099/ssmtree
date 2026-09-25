@@ -55,7 +55,7 @@ class TestBuildTree:
     def test_param_at_intermediate_node(self):
         """A parameter can exist at an intermediate path that also has children."""
         params = [
-            _param("/app/prod"),      # intermediate path also has a parameter
+            _param("/app/prod"),  # intermediate path also has a parameter
             _param("/app/prod/key"),
         ]
         root = build_tree(params, root_path="/app")

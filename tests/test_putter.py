@@ -97,7 +97,8 @@ class TestPutParameter:
         """KMS key should be accepted without error for SecureString (moto accepts it)."""
         client = boto3.client("ssm", region_name="us-east-1")
         version = put_parameter(
-            "/app/prod/secret", "val",
+            "/app/prod/secret",
+            "val",
             param_type="SecureString",
             kms_key_id="alias/my-key",
             ssm_client=client,
@@ -109,7 +110,8 @@ class TestPutParameter:
         """kms_key_id should not be included in the API call for String type."""
         client = boto3.client("ssm", region_name="us-east-1")
         version = put_parameter(
-            "/app/prod/key", "val",
+            "/app/prod/key",
+            "val",
             param_type="String",
             kms_key_id="alias/my-key",
             ssm_client=client,
@@ -174,10 +176,7 @@ class TestSanitizeError:
         assert "123456789012" not in result
 
     def test_strips_value_and_arn_together(self):
-        msg = (
-            "Error putting my-secret to "
-            "arn:aws:ssm:us-east-1:123456789012:parameter/key"
-        )
+        msg = "Error putting my-secret to " "arn:aws:ssm:us-east-1:123456789012:parameter/key"
         result = _sanitize_error(msg, "my-secret")
         assert "my-secret" not in result
         assert "123456789012" not in result
@@ -259,7 +258,10 @@ class TestPutParameterKmsKeyId:
         client = boto3.client("ssm", region_name="us-east-1")
 
         version = put_parameter(
-            "/app/test/ips", "10.0.0.1,10.0.0.2", param_type="StringList",
-            kms_key_id="alias/key", ssm_client=client
+            "/app/test/ips",
+            "10.0.0.1,10.0.0.2",
+            param_type="StringList",
+            kms_key_id="alias/key",
+            ssm_client=client,
         )
         assert version == 1

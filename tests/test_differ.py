@@ -97,9 +97,7 @@ class TestDiffNamespaces:
         """Params match by relative path, not absolute path."""
         p1 = [_param("/long/prefix/prod/key", "v")]
         p2 = [_param("/short/staging/key", "v")]
-        added, removed, changed = diff_namespaces(
-            p1, p2, "/long/prefix/prod", "/short/staging"
-        )
+        added, removed, changed = diff_namespaces(p1, p2, "/long/prefix/prod", "/short/staging")
         assert added == []
         assert removed == []
         assert changed == []

@@ -602,9 +602,7 @@ class TestPutCommand:
     def test_put_type_secure_string(self, runner):
         with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
-                runner.invoke(
-                    main, ["put", "--type", "SecureString", "/app/prod/secret", "val"]
-                )
+                runner.invoke(main, ["put", "--type", "SecureString", "/app/prod/secret", "val"])
         assert mock_put.call_args[1]["param_type"] == "SecureString"
 
     def test_put_type_string_list(self, runner):
@@ -653,9 +651,13 @@ class TestPutCommand:
                 runner.invoke(
                     main,
                     [
-                        "put", "--type", "SecureString",
-                        "--kms-key-id", "alias/my-key",
-                        "/app/prod/secret", "val",
+                        "put",
+                        "--type",
+                        "SecureString",
+                        "--kms-key-id",
+                        "alias/my-key",
+                        "/app/prod/secret",
+                        "val",
                     ],
                 )
         assert mock_put.call_args[1]["kms_key_id"] == "alias/my-key"
@@ -714,9 +716,17 @@ class TestPutCommand:
             with patch("ssmtree.cli.put_parameter", return_value=1):
                 result = runner.invoke(
                     main,
-                    ["put", "--profile", "myprofile", "--region", "eu-west-1",
-                     "--endpoint-url", "http://localhost:4566",
-                     "/app/prod/key", "val"],
+                    [
+                        "put",
+                        "--profile",
+                        "myprofile",
+                        "--region",
+                        "eu-west-1",
+                        "--endpoint-url",
+                        "http://localhost:4566",
+                        "/app/prod/key",
+                        "val",
+                    ],
                 )
         assert result.exit_code == 0
         mock_make.assert_called_once_with("myprofile", "eu-west-1", "http://localhost:4566")
@@ -756,9 +766,7 @@ class TestPutCommand:
         """Explicit --no-overwrite behaves identically to the default (no prompt)."""
         with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
-                result = runner.invoke(
-                    main, ["put", "--no-overwrite", "/app/prod/key", "val"]
-                )
+                result = runner.invoke(main, ["put", "--no-overwrite", "/app/prod/key", "val"])
         assert result.exit_code == 0
         mock_put.assert_called_once()
         assert mock_put.call_args[1]["overwrite"] is False
@@ -767,9 +775,7 @@ class TestPutCommand:
         """--description '' should forward an empty string, not None."""
         with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1) as mock_put:
-                result = runner.invoke(
-                    main, ["put", "--description", "", "/app/prod/key", "val"]
-                )
+                result = runner.invoke(main, ["put", "--description", "", "/app/prod/key", "val"])
         assert result.exit_code == 0
         assert mock_put.call_args[1]["description"] == ""
 
@@ -777,9 +783,7 @@ class TestPutCommand:
         """Success output includes the parameter type for String."""
         with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1):
-                result = runner.invoke(
-                    main, ["put", "--type", "String", "/app/prod/key", "val"]
-                )
+                result = runner.invoke(main, ["put", "--type", "String", "/app/prod/key", "val"])
         assert result.exit_code == 0
         assert "String" in result.output
 
@@ -839,8 +843,15 @@ class TestPutCommand:
             with patch("ssmtree.cli.put_parameter") as mock_put:
                 result = runner.invoke(
                     main,
-                    ["put", "--type", "String", "--kms-key-id", "alias/key",
-                     "/app/prod/key", "val"],
+                    [
+                        "put",
+                        "--type",
+                        "String",
+                        "--kms-key-id",
+                        "alias/key",
+                        "/app/prod/key",
+                        "val",
+                    ],
                 )
         assert result.exit_code != 0
         mock_put.assert_not_called()
@@ -879,8 +890,7 @@ class TestPutCommand:
                 )
         assert result.exit_code == 0
         assert (
-            mock_put.call_args[1]["kms_key_id"]
-            == "arn:aws:kms:us-east-1:111122223333:key/my-key"
+            mock_put.call_args[1]["kms_key_id"] == "arn:aws:kms:us-east-1:111122223333:key/my-key"
         )
         assert mock_put.call_args[1]["param_type"] == "SecureString"
 

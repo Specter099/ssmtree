@@ -14,18 +14,17 @@ ParameterType = Literal["String", "SecureString", "StringList"]
 class Parameter:
     """Represents a single SSM Parameter Store parameter."""
 
-    path: str              # full SSM path, e.g. /app/prod/db/password
-    name: str              # leaf segment only, e.g. "password"
-    value: str             # parameter value (may be "***" if SecureString not decrypted)
-    type: ParameterType    # "String" | "SecureString" | "StringList"
+    path: str  # full SSM path, e.g. /app/prod/db/password
+    name: str  # leaf segment only, e.g. "password"
+    value: str  # parameter value (may be "***" if SecureString not decrypted)
+    type: ParameterType  # "String" | "SecureString" | "StringList"
     version: int
     last_modified: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.type not in PARAMETER_TYPES:
             raise ValueError(
-                f"Invalid parameter type {self.type!r}; "
-                f"expected one of {PARAMETER_TYPES}"
+                f"Invalid parameter type {self.type!r}; " f"expected one of {PARAMETER_TYPES}"
             )
 
     @property
@@ -41,8 +40,8 @@ class Parameter:
 class TreeNode:
     """A node in the SSM parameter path tree."""
 
-    name: str                          # display label for this path segment
-    path: str                          # full path up to (and including) this segment
+    name: str  # display label for this path segment
+    path: str  # full path up to (and including) this segment
     children: dict[str, TreeNode] = field(default_factory=dict)
     parameter: Parameter | None = None  # set if a parameter exists at this exact path
 

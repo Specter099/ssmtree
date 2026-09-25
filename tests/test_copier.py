@@ -39,9 +39,7 @@ class TestRewritePath:
         assert rewrite_path("/prod/db/host", "/prod", "/staging") == "/staging/db/host"
 
     def test_rewrite_deep(self):
-        assert (
-            rewrite_path("/a/b/c/d", "/a/b", "/x/y") == "/x/y/c/d"
-        )
+        assert rewrite_path("/a/b/c/d", "/a/b", "/x/y") == "/x/y/c/d"
 
     def test_rewrite_exact_match(self):
         assert rewrite_path("/prod", "/prod", "/staging") == "/staging"
