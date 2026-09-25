@@ -70,6 +70,21 @@ class TestCopyNamespace:
         assert "/staging/db/port" in dest_names
 
     @mock_aws
+    def test_copy_preserves_data_type_and_large_values(self):
+        client = boto3.client("ssm", region_name="us-east-1")
+        ami = _param("/prod/ami", "ami-12345678")
+        ami.data_type = "aws:ec2:image"
+        big = _param("/prod/big", "x" * 5000)  # > 4 KB: needs the Advanced tier
+
+        written, failed = copy_namespace([ami, big], "/prod", "/staging", client)
+
+        assert failed == []
+        assert len(written) == 2
+        resp = client.get_parameter(Name="/staging/ami")["Parameter"]
+        assert resp["DataType"] == "aws:ec2:image"
+        assert client.get_parameter(Name="/staging/big")["Parameter"]["Value"] == "x" * 5000
+
+    @mock_aws
     def test_copy_preserves_values(self):
         client = boto3.client("ssm", region_name="us-east-1")
         params = [_param("/prod/key", "my-special-value")]

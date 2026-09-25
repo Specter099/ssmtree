@@ -187,6 +187,13 @@ class TestRenderDiff:
         assert "plaintext-new" in output
         assert "[redacted]" not in output
 
+    def test_type_change_shows_both_types(self):
+        old = _param("/a/key", value="same")
+        new = _param("/b/key", value="same", type_="StringList")
+        output = _render_to_str(render_diff([], [], [(old, new)], "/a", "/b", show_values=True))
+        assert "[String]" in output
+        assert "[StringList]" in output
+
 
 class TestRenderCopyPlan:
     def test_returns_table(self):

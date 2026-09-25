@@ -65,7 +65,7 @@ class TestMainCommand:
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
             result = runner.invoke(main, ["--output", "json", "/app/prod"])
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert isinstance(data, list)
         assert len(data) == 3
         paths = {item["path"] for item in data}
@@ -75,7 +75,7 @@ class TestMainCommand:
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
             result = runner.invoke(main, ["--output", "json", "/app/prod"])
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         secure = [item for item in data if item["type"] == "SecureString"]
         assert len(secure) == 1
         assert secure[0]["value"] == "***REDACTED***"
@@ -126,7 +126,7 @@ class TestMainCommand:
         with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
             result = runner.invoke(main, ["--output", "json", "--filter", "*/db/*", "/app/prod"])
         assert result.exit_code == 0
-        paths = [p["path"] for p in json.loads(result.output)]
+        paths = [p["path"] for p in json.loads(result.stdout)]
         assert paths
         assert all("/db/" in p for p in paths)
 
@@ -208,7 +208,7 @@ class TestDiffCommand:
         with patch("ssmtree.cli.fetch_parameters", side_effect=[PROD_PARAMS, STAGING_PARAMS]):
             result = runner.invoke(main, ["diff", "--output", "json", "/app/prod", "/app/staging"])
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert "added" in data
         assert "removed" in data
         assert "changed" in data
@@ -219,10 +219,11 @@ class TestDiffCommand:
         with patch("ssmtree.cli.fetch_parameters", side_effect=[prod, staging]):
             result = runner.invoke(main, ["diff", "--output", "json", "/prod", "/staging"])
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         for entry in data["changed"]:
             assert entry["old_value"] == "***REDACTED***"
             assert entry["new_value"] == "***REDACTED***"
+        assert "cannot be compared without --decrypt" in result.stderr
 
     def test_diff_validates_paths(self, runner):
         result = runner.invoke(main, ["diff", "no-slash", "/staging"])

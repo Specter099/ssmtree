@@ -74,7 +74,12 @@ def copy_namespace(
                 "Value": param.value,
                 "Type": param.type,
                 "Overwrite": overwrite,
+                # Standard tier rejects values > 4 KB; Intelligent-Tiering picks
+                # Advanced only when needed (and never downgrades an existing one).
+                "Tier": "Intelligent-Tiering",
             }
+            if param.data_type != "text":
+                put_kwargs["DataType"] = param.data_type
             if param.type == "SecureString" and kms_key_id:
                 put_kwargs["KeyId"] = kms_key_id
 

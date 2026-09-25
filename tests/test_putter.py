@@ -200,6 +200,11 @@ class TestSanitizeError:
         assert "$ecret" not in result
         assert "***" in result
 
+    def test_short_value_does_not_mangle_message(self):
+        msg = "Parameter a is invalid for account access"
+        result = _sanitize_error(msg, "a")
+        assert result == "Parameter *** is invalid for account access"
+
 
 class TestPutParameterBotoCoreError:
     """put_parameter must convert BotoCoreError (not just ClientError) into PutError."""

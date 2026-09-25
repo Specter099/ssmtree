@@ -20,6 +20,7 @@ class Parameter:
     type: ParameterType  # "String" | "SecureString" | "StringList"
     version: int
     last_modified: datetime | None = None
+    data_type: str = "text"  # "text", "aws:ec2:image", or "aws:ssm:integration"
 
     def __post_init__(self) -> None:
         if self.type not in PARAMETER_TYPES:

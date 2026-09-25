@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from ssmtree.differ import diff_namespaces
@@ -101,3 +102,10 @@ class TestDiffNamespaces:
         assert added == []
         assert removed == []
         assert changed == []
+
+
+def test_type_only_change_is_reported():
+    old = _param("/a/key", "same")
+    new = replace(_param("/b/key", "same"), type="SecureString")
+    added, removed, changed = diff_namespaces([old], [new], "/a", "/b")
+    assert changed == [(old, new)]

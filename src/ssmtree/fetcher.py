@@ -56,6 +56,7 @@ def _to_parameter(item: Any) -> Parameter:
         type=item.get("Type", "String"),
         version=item.get("Version", 0),
         last_modified=item.get("LastModifiedDate"),
+        data_type=item.get("DataType", "text"),
     )
 
 

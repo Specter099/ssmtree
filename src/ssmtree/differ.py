@@ -36,7 +36,7 @@ def diff_namespaces(
 
         * ``added``   — parameters in *params2* not present in *params1*.
         * ``removed`` — parameters in *params1* not present in *params2*.
-        * ``changed`` — ``(old, new)`` pairs where the value differs.
+        * ``changed`` — ``(old, new)`` pairs where the value or type differs.
     """
     map1: dict[str, Parameter] = {relative_path(p.path, path1): p for p in params1}
     map2: dict[str, Parameter] = {relative_path(p.path, path2): p for p in params2}
@@ -47,7 +47,9 @@ def diff_namespaces(
     removed = [map1[k] for k in sorted(keys1 - keys2)]
     added = [map2[k] for k in sorted(keys2 - keys1)]
     changed: list[tuple[Parameter, Parameter]] = [
-        (map1[k], map2[k]) for k in sorted(keys1 & keys2) if map1[k].value != map2[k].value
+        (map1[k], map2[k])
+        for k in sorted(keys1 & keys2)
+        if (map1[k].value, map1[k].type) != (map2[k].value, map2[k].type)
     ]
 
     return added, removed, changed

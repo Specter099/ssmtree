@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   path (`/dest//src/path`).
 - `put --overwrite` reports "Created" when the parameter did not previously exist.
 - Error messages are written to stderr instead of stdout.
+- `copy` preserves `DataType` and can copy values over 4 KB (writes use the
+  `Intelligent-Tiering` tier; `put` too).
+- `diff` reports type-only changes (JSON adds `new_type`) and warns on stderr in
+  JSON mode when undecrypted SecureStrings are compared.
+- Error scrubbing no longer garbles messages when the secret value is short.
 
 ### Removed
 

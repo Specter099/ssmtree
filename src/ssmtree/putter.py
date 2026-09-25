@@ -48,6 +48,9 @@ def put_parameter(
         "Value": value,
         "Type": param_type,
         "Overwrite": overwrite,
+        # Standard tier rejects values > 4 KB; Intelligent-Tiering picks Advanced
+        # only when needed (and never downgrades an existing one).
+        "Tier": "Intelligent-Tiering",
     }
     if param_type == "SecureString" and kms_key_id:
         put_kwargs["KeyId"] = kms_key_id

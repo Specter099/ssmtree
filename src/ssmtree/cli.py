@@ -265,6 +265,11 @@ def diff_cmd(
             err_console.print(
                 "[bold yellow]WARNING:[/] Secret values will be included in output.",
             )
+        if not decrypt and any(old.is_secure or new.is_secure for old, new in changed):
+            err_console.print(
+                "[bold yellow]WARNING:[/] SecureString values cannot be compared without "
+                "--decrypt; they are reported as changed.",
+            )
         data = {
             "added": [
                 {
@@ -288,6 +293,7 @@ def diff_cmd(
                     "old_value": _redact_value(old.type, old.value, include_secrets),
                     "new_value": _redact_value(new.type, new.value, include_secrets),
                     "type": old.type,
+                    "new_type": new.type,
                 }
                 for old, new in changed
             ],

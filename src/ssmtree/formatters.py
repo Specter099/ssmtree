@@ -149,6 +149,9 @@ def render_diff(
         if show_values:
             old_val = Text(_display_value(old, decrypt))
             new_val = Text(_display_value(new, decrypt))
+            if old.type != new.type:
+                old_val.append(f" [{old.type}]", style="dim")
+                new_val.append(f" [{new.type}]", style="dim")
             table.add_row("changed", escape(rel), old_val, new_val)
         else:
             table.add_row("changed", escape(rel))
