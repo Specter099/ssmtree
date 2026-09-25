@@ -15,11 +15,8 @@ if TYPE_CHECKING:
     from mypy_boto3_ssm import SSMClient
 
 
-class CopyError(Exception):
-    """Raised when the entire copy operation cannot proceed."""
-
-
-def _rewrite_path(path: str, source_prefix: str, dest_prefix: str) -> str:
+def rewrite_path(path: str, source_prefix: str, dest_prefix: str) -> str:
+    """Replace the *source_prefix* portion of *path* with *dest_prefix*."""
     source_prefix = source_prefix.rstrip("/")
     dest_prefix = dest_prefix.rstrip("/")
     if path.startswith(source_prefix + "/"):
@@ -35,7 +32,6 @@ def copy_namespace(
     dest_prefix: str,
     ssm_client: SSMClient,
     overwrite: bool = False,
-    dry_run: bool = False,
     kms_key_id: str | None = None,
 ) -> tuple[list[str], list[tuple[str, str]]]:
     """Copy all parameters from *source_prefix* to *dest_prefix*.
@@ -49,7 +45,6 @@ def copy_namespace(
         dest_prefix:    The new prefix to prepend.
         ssm_client:     A boto3 SSM client.
         overwrite:      Allow overwriting existing destination parameters.
-        dry_run:        If *True*, return the planned dest paths without writing.
         kms_key_id:     KMS key ARN/alias for ``SecureString`` parameters at dest.
                         Defaults to the account default CMK.
 
@@ -57,17 +52,7 @@ def copy_namespace(
         A tuple ``(written, failed)`` where *written* is a list of successfully
         written destination paths and *failed* is a list of ``(path, error_msg)``
         tuples for parameters that could not be written.
-
-        On dry-run, returns ``(planned_paths, [])``.
     """
-    planned: list[str] = []
-    for param in sorted(source_params, key=lambda p: p.path):
-        dest_path = _rewrite_path(param.path, source_prefix, dest_prefix)
-        planned.append(dest_path)
-
-    if dry_run:
-        return planned, []
-
     console = Console()
     written: list[str] = []
     failed: list[tuple[str, str]] = []
@@ -82,7 +67,8 @@ def copy_namespace(
     ) as progress:
         task = progress.add_task("Copying parameters…", total=len(source_params))
 
-        for param, dest_path in zip(sorted(source_params, key=lambda p: p.path), planned):
+        for param in sorted(source_params, key=lambda p: p.path):
+            dest_path = rewrite_path(param.path, source_prefix, dest_prefix)
             put_kwargs: dict[str, Any] = {
                 "Name": dest_path,
                 "Value": param.value,

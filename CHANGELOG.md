@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- Escape control characters (including ESC) in displayed parameter values so a
+  crafted value cannot inject terminal escape sequences (e.g. OSC 52 clipboard
+  writes) into the viewer's terminal.
+
+### Fixed
+
+- `--filter` is now applied to `--output json` (previously ignored).
+- `copy --dry-run` of a single leaf parameter showed a malformed destination
+  path (`/dest//src/path`).
+- `put --overwrite` reports "Created" when the parameter did not previously exist.
+- Error messages are written to stderr instead of stdout.
+
+### Removed
+
+- Dead code: `CopyError`, `copy_namespace(dry_run=...)`, `TreeNode.is_leaf`,
+  the optional `ssm_client` default in `put_parameter`, and the unused CI
+  coverage-upload step.
+
 ## [0.4.0] - 2026-07-09
 
 ### Security

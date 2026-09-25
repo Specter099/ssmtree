@@ -47,11 +47,6 @@ class TreeNode:
     parameter: Parameter | None = None  # set if a parameter exists at this exact path
 
     @property
-    def is_leaf(self) -> bool:
-        """True when this node has no children (pure leaf parameter node)."""
-        return len(self.children) == 0
-
-    @property
     def is_namespace(self) -> bool:
         """True when this node has children (acts as a namespace/directory)."""
         return len(self.children) > 0

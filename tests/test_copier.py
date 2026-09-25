@@ -9,7 +9,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from ssmtree.copier import _rewrite_path, copy_namespace
+from ssmtree.copier import copy_namespace, rewrite_path
 from ssmtree.models import Parameter
 
 
@@ -36,50 +36,24 @@ def aws_env():
 
 class TestRewritePath:
     def test_rewrite_simple(self):
-        assert _rewrite_path("/prod/db/host", "/prod", "/staging") == "/staging/db/host"
+        assert rewrite_path("/prod/db/host", "/prod", "/staging") == "/staging/db/host"
 
     def test_rewrite_deep(self):
         assert (
-            _rewrite_path("/a/b/c/d", "/a/b", "/x/y") == "/x/y/c/d"
+            rewrite_path("/a/b/c/d", "/a/b", "/x/y") == "/x/y/c/d"
         )
 
     def test_rewrite_exact_match(self):
-        assert _rewrite_path("/prod", "/prod", "/staging") == "/staging"
+        assert rewrite_path("/prod", "/prod", "/staging") == "/staging"
 
     def test_rewrite_no_match_unchanged(self):
-        assert _rewrite_path("/other/key", "/prod", "/staging") == "/other/key"
+        assert rewrite_path("/other/key", "/prod", "/staging") == "/other/key"
 
     def test_rewrite_strips_trailing_slash(self):
-        assert _rewrite_path("/prod/key", "/prod/", "/staging/") == "/staging/key"
+        assert rewrite_path("/prod/key", "/prod/", "/staging/") == "/staging/key"
 
 
 class TestCopyNamespace:
-    @mock_aws
-    def test_dry_run_returns_planned_paths(self):
-        client = boto3.client("ssm", region_name="us-east-1")
-        params = [
-            _param("/prod/db/host", "host"),
-            _param("/prod/db/port", "5432"),
-        ]
-        written, failed = copy_namespace(
-            params, "/prod", "/staging", client, dry_run=True
-        )
-        assert "/staging/db/host" in written
-        assert "/staging/db/port" in written
-        assert len(written) == 2
-        assert failed == []
-
-    @mock_aws
-    def test_dry_run_does_not_write(self):
-        client = boto3.client("ssm", region_name="us-east-1")
-        params = [_param("/prod/key", "val")]
-
-        copy_namespace(params, "/prod", "/staging", client, dry_run=True)
-
-        # Nothing should have been written
-        response = client.get_parameters_by_path(Path="/staging", Recursive=True)
-        assert response["Parameters"] == []
-
     @mock_aws
     def test_copy_writes_params(self):
         client = boto3.client("ssm", region_name="us-east-1")

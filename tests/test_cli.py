@@ -122,12 +122,23 @@ class TestMainCommand:
             result = runner.invoke(main, ["--filter", "*/db/*", "/app/prod"])
         assert result.exit_code == 0
 
+    def test_filter_applies_to_json_output(self, runner):
+        with patch("ssmtree.cli.fetch_parameters", return_value=PROD_PARAMS):
+            result = runner.invoke(main, ["--output", "json", "--filter", "*/db/*", "/app/prod"])
+        assert result.exit_code == 0
+        paths = [p["path"] for p in json.loads(result.output)]
+        assert paths
+        assert all("/db/" in p for p in paths)
+
     def test_fetch_error_exits_nonzero(self, runner):
         from ssmtree.fetcher import FetchError
 
         with patch("ssmtree.cli.fetch_parameters", side_effect=FetchError("denied")):
             result = runner.invoke(main, ["/app/prod"])
         assert result.exit_code != 0
+        # Errors go to stderr so they never corrupt piped (e.g. JSON) stdout.
+        assert "denied" in result.stderr
+        assert "denied" not in result.stdout
 
     def test_default_path_is_root(self, runner):
         with patch("ssmtree.cli.fetch_parameters", return_value=[]) as mock_fetch:
@@ -335,6 +346,16 @@ class TestPutCommand:
         with patch("ssmtree.cli.make_client"):
             with patch("ssmtree.cli.put_parameter", return_value=1):
                 result = runner.invoke(main, ["put", "/app/prod/key", "val"])
+        assert result.exit_code == 0
+        assert "Created" in result.output
+
+    def test_put_overwrite_of_new_param_shows_created(self, runner):
+        """--overwrite on a parameter that did not exist still reports 'Created'."""
+        with patch("ssmtree.cli.make_client"):
+            with patch("ssmtree.cli.put_parameter", return_value=1):
+                result = runner.invoke(
+                    main, ["put", "--overwrite", "--yes", "/app/prod/key", "val"]
+                )
         assert result.exit_code == 0
         assert "Created" in result.output
 

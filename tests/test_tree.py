@@ -102,7 +102,7 @@ class TestBuildTree:
     def test_leaf_node_is_leaf(self):
         params = [_param("/app/key")]
         root = build_tree(params, root_path="/app")
-        assert root.children["key"].is_leaf
+        assert not root.children["key"].is_namespace
 
     def test_namespace_node_is_namespace(self):
         params = [_param("/app/db/host")]

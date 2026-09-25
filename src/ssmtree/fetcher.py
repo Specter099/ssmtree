@@ -46,6 +46,23 @@ def make_client(
         raise ClientCreationError(sanitize_error(str(exc))) from exc
 
 
+def _to_parameter(item: Any) -> Parameter:
+    """Convert an SSM API parameter dict into a :class:`Parameter`."""
+    path = item["Name"]
+    return Parameter(
+        path=path,
+        name=path.rstrip("/").rsplit("/", 1)[-1] or path,
+        value=item.get("Value", ""),
+        type=item.get("Type", "String"),
+        version=item.get("Version", 0),
+        last_modified=item.get("LastModifiedDate"),
+    )
+
+
+def _fetch_error(exc: Exception) -> FetchError:
+    return FetchError(f"Failed to fetch parameters from SSM: {sanitize_error(str(exc))}")
+
+
 def fetch_parameters(
     prefix: str,
     decrypt: bool = False,
@@ -75,69 +92,28 @@ def fetch_parameters(
         raise FetchError(str(exc)) from exc
 
     params: list[Parameter] = []
-    kwargs: dict[str, Any] = {
-        "Path": prefix,
-        "Recursive": True,
-        "WithDecryption": decrypt,
-    }
-
+    kwargs: dict[str, Any] = {"Path": prefix, "Recursive": True, "WithDecryption": decrypt}
     try:
         while True:
             response = client.get_parameters_by_path(**kwargs)
-            for item in response.get("Parameters", []):
-                path = item["Name"]
-                segments = [s for s in path.split("/") if s]
-                name = segments[-1] if segments else path
-                params.append(
-                    Parameter(
-                        path=path,
-                        name=name,
-                        value=item.get("Value", ""),
-                        type=item.get("Type", "String"),
-                        version=item.get("Version", 0),
-                        last_modified=item.get("LastModifiedDate"),
-                    )
-                )
-            next_token = response.get("NextToken")
-            if not next_token:
+            params.extend(_to_parameter(item) for item in response.get("Parameters", []))
+            if not response.get("NextToken"):
                 break
-            kwargs["NextToken"] = next_token
+            kwargs["NextToken"] = response["NextToken"]
     except (ClientError, BotoCoreError) as exc:
-        sanitized = sanitize_error(str(exc))
-        raise FetchError(f"Failed to fetch parameters from SSM: {sanitized}") from exc
+        raise _fetch_error(exc) from exc
 
     # get_parameters_by_path never returns a parameter AT the prefix path itself
     # (only parameters under it).  Try get_parameter as a fallback so that
     # e.g. `ssmtree /app/db/password` works when that is a leaf parameter.
-    if prefix != "/":
-        existing_paths = {p.path for p in params}
-        if prefix not in existing_paths:
-            try:
-                resp = client.get_parameter(Name=prefix, WithDecryption=decrypt)
-                item = resp["Parameter"]
-                path = item["Name"]
-                segments = [s for s in path.split("/") if s]
-                name = segments[-1] if segments else path
-                params.append(
-                    Parameter(
-                        path=path,
-                        name=name,
-                        value=item.get("Value", ""),
-                        type=item.get("Type", "String"),
-                        version=item.get("Version", 0),
-                        last_modified=item.get("LastModifiedDate"),
-                    )
-                )
-            except ClientError as exc:
-                if exc.response["Error"]["Code"] != "ParameterNotFound":
-                    sanitized = sanitize_error(str(exc))
-                    raise FetchError(
-                        f"Failed to fetch parameters from SSM: {sanitized}"
-                    ) from exc
-            except BotoCoreError as exc:
-                sanitized = sanitize_error(str(exc))
-                raise FetchError(
-                    f"Failed to fetch parameters from SSM: {sanitized}"
-                ) from exc
+    if prefix != "/" and all(p.path != prefix for p in params):
+        try:
+            resp = client.get_parameter(Name=prefix, WithDecryption=decrypt)
+            params.append(_to_parameter(resp["Parameter"]))
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] != "ParameterNotFound":
+                raise _fetch_error(exc) from exc
+        except BotoCoreError as exc:
+            raise _fetch_error(exc) from exc
 
     return sorted(params, key=lambda p: p.path)

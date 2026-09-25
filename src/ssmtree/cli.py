@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 import sys
@@ -31,7 +32,7 @@ _SSM_PATH_RE = re.compile(r"^(?:/[a-zA-Z0-9_.-]+)+$")
 
 
 def _abort(msg: str) -> NoReturn:
-    console.print(f"[bold red]Error:[/] {escape(msg)}")
+    err_console.print(f"[bold red]Error:[/] {escape(msg)}")
     sys.exit(1)
 
 
@@ -178,13 +179,9 @@ def main(
     except FetchError as exc:
         _abort(str(exc))
 
-    if filter_pattern:
-        tree = build_tree(params, root_path=path)
-        tree = filter_tree(tree, filter_pattern)
-    else:
-        tree = build_tree(params, root_path=path)
-
     if output == "json":
+        if filter_pattern:
+            params = [p for p in params if fnmatch.fnmatch(p.path, filter_pattern)]
         if include_secrets:
             err_console.print(
                 "[bold yellow]WARNING:[/] Secret values will be included in output.",
@@ -201,8 +198,10 @@ def main(
         ]
         click.echo(json.dumps(data, indent=2, default=str))
     else:
-        rich_tree = render_tree(tree, show_values=show_values, decrypt=decrypt)
-        console.print(rich_tree)
+        tree = build_tree(params, root_path=path)
+        if filter_pattern:
+            tree = filter_tree(tree, filter_pattern)
+        console.print(render_tree(tree, show_values=show_values, decrypt=decrypt))
 
 
 @main.command("diff")
@@ -396,7 +395,6 @@ def copy_cmd(
         dest_prefix=dest,
         ssm_client=ssm_client,
         overwrite=overwrite,
-        dry_run=False,
         kms_key_id=kms_key_id,
     )
 
@@ -530,12 +528,11 @@ def put_cmd(
         )
     except PutError as exc:
         _abort(str(exc))
-        return
 
     type_label = (
         "[bold yellow]SecureString[/]"
         if param_type == "SecureString"
         else f"[bold cyan]{param_type}[/]"
     )
-    action = "Updated" if overwrite else "Created"
+    action = "Created" if version == 1 else "Updated"
     console.print(f"[bold green]{action}[/] {path} ({type_label}, version {version})")

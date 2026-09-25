@@ -152,10 +152,6 @@ class TestPutParameter:
         assert "123456789012" not in str(exc_info.value)
         assert "arn:***" in str(exc_info.value) or "***" in str(exc_info.value)
 
-    def test_raises_when_no_client(self):
-        with pytest.raises(PutError, match="ssm_client is required"):
-            put_parameter("/app/prod/key", "val")
-
 
 class TestSanitizeError:
     """Error messages must not leak secret values, ARNs, or account IDs."""

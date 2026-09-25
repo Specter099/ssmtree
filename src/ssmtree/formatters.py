@@ -2,23 +2,31 @@
 
 from __future__ import annotations
 
+import re
+
 from rich.markup import escape
 from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
+from ssmtree.copier import rewrite_path
+from ssmtree.differ import relative_path
 from ssmtree.models import Parameter, TreeNode
 
 _MAX_VALUE_LEN = 60
+_REDACTED_LABEL = "[redacted]"
+
+# C0/C1 control characters (incl. ESC).  Parameter values are attacker-controllable
+# by anyone with ssm:PutParameter, so raw escape sequences must never reach the
+# terminal (OSC 52 clipboard writes, screen clears, hidden text, etc.).
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 
 def _truncate(value: str) -> str:
+    value = _CONTROL_RE.sub(lambda m: repr(m.group())[1:-1], value)
     if len(value) <= _MAX_VALUE_LEN:
         return value
     return value[:_MAX_VALUE_LEN] + "…"
-
-
-_REDACTED_LABEL = "[redacted]"
 
 
 def _display_value(param: Parameter, decrypt: bool) -> str:
@@ -64,13 +72,9 @@ def _add_node(rich_tree: Tree, node: TreeNode, show_values: bool, decrypt: bool 
                 branch_label.append(f"  ({display})", style=style)
             branch = rich_tree.add(branch_label)
             _add_node(branch, child, show_values, decrypt)
-        else:
-            # Pure leaf node — must have a parameter
-            if child.parameter is not None:
-                rich_tree.add(_param_label(child.parameter, show_values, decrypt))
-            else:
-                # Orphan namespace with no param and no children (shouldn't happen)
-                rich_tree.add(Text(child.name, style="dim"))
+        elif child.parameter is not None:
+            # Leaf nodes always carry a parameter (build_tree/filter_tree invariant)
+            rich_tree.add(_param_label(child.parameter, show_values, decrypt))
 
 
 def render_tree(root: TreeNode, show_values: bool = True, decrypt: bool = False) -> Tree:
@@ -127,21 +131,21 @@ def render_diff(
         table.add_column(escape(path2), style="green")
 
     for param in sorted(removed, key=lambda p: p.path):
-        rel = _relative(param.path, path1)
+        rel = relative_path(param.path, path1)
         if show_values:
             table.add_row("removed", escape(rel), Text(_display_value(param, decrypt)), Text(""))
         else:
             table.add_row("removed", escape(rel))
 
     for param in sorted(added, key=lambda p: p.path):
-        rel = _relative(param.path, path2)
+        rel = relative_path(param.path, path2)
         if show_values:
             table.add_row("added", escape(rel), Text(""), Text(_display_value(param, decrypt)))
         else:
             table.add_row("added", escape(rel))
 
     for old, new in sorted(changed, key=lambda pair: pair[0].path):
-        rel = _relative(old.path, path1)
+        rel = relative_path(old.path, path1)
         if show_values:
             old_val = Text(_display_value(old, decrypt))
             new_val = Text(_display_value(new, decrypt))
@@ -183,7 +187,7 @@ def render_copy_plan(
     table.add_column("Type", style="dim")
 
     for param in sorted(source_params, key=lambda p: p.path):
-        dest_path = dest_prefix.rstrip("/") + "/" + _relative(param.path, source_prefix)
+        dest_path = rewrite_path(param.path, source_prefix, dest_prefix)
         # Flag SecureString rows: they require --decrypt to copy the real value.
         type_cell: str | Text = (
             Text(f"{param.type} (needs --decrypt)", style="bold yellow")
@@ -194,10 +198,3 @@ def render_copy_plan(
 
     return table
 
-
-def _relative(path: str, prefix: str) -> str:
-    """Strip *prefix* from *path* to get the relative segment."""
-    prefix = prefix.rstrip("/")
-    if path.startswith(prefix + "/"):
-        return path[len(prefix) + 1 :]
-    return path
