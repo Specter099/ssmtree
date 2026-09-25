@@ -21,7 +21,7 @@ botocore-stubs==1.43.14
     # via boto3-stubs
 cachecontrol==0.14.4
     # via pip-audit
-certifi==2026.6.17
+certifi==2026.7.22
     # via requests
 cffi==2.1.0
     # via cryptography
