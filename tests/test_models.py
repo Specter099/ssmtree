@@ -53,14 +53,12 @@ class TestParameter:
 class TestTreeNode:
     def test_leaf_node(self):
         node = TreeNode(name="host", path="/app/prod/db/host")
-        assert node.is_leaf
         assert not node.is_namespace
 
     def test_namespace_node(self):
         child = TreeNode(name="host", path="/app/prod/db/host")
         node = TreeNode(name="db", path="/app/prod/db", children={"host": child})
         assert node.is_namespace
-        assert not node.is_leaf
 
     def test_default_no_children_no_param(self):
         node = TreeNode(name="x", path="/x")

@@ -5,7 +5,8 @@ from __future__ import annotations
 from ssmtree.models import Parameter
 
 
-def _relative(path: str, prefix: str) -> str:
+def relative_path(path: str, prefix: str) -> str:
+    """Strip *prefix* from *path* to get the relative segment."""
     prefix = prefix.rstrip("/")
     if path.startswith(prefix + "/"):
         return path[len(prefix) + 1 :]
@@ -35,10 +36,10 @@ def diff_namespaces(
 
         * ``added``   — parameters in *params2* not present in *params1*.
         * ``removed`` — parameters in *params1* not present in *params2*.
-        * ``changed`` — ``(old, new)`` pairs where the value differs.
+        * ``changed`` — ``(old, new)`` pairs where the value or type differs.
     """
-    map1: dict[str, Parameter] = {_relative(p.path, path1): p for p in params1}
-    map2: dict[str, Parameter] = {_relative(p.path, path2): p for p in params2}
+    map1: dict[str, Parameter] = {relative_path(p.path, path1): p for p in params1}
+    map2: dict[str, Parameter] = {relative_path(p.path, path2): p for p in params2}
 
     keys1 = set(map1)
     keys2 = set(map2)
@@ -48,7 +49,7 @@ def diff_namespaces(
     changed: list[tuple[Parameter, Parameter]] = [
         (map1[k], map2[k])
         for k in sorted(keys1 & keys2)
-        if map1[k].value != map2[k].value
+        if (map1[k].value, map1[k].type) != (map2[k].value, map2[k].type)
     ]
 
     return added, removed, changed
