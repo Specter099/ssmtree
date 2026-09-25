@@ -19,22 +19,22 @@ class PutError(Exception):
 def put_parameter(
     path: str,
     value: str,
+    ssm_client: SSMClient,
     param_type: str = "String",
     overwrite: bool = False,
     kms_key_id: str | None = None,
     description: str | None = None,
-    ssm_client: SSMClient | None = None,
 ) -> int:
     """Write a single SSM parameter and return the resulting version number.
 
     Args:
         path:        Full SSM parameter path, e.g. ``/app/prod/db/password``.
         value:       Parameter value.
+        ssm_client:  A boto3 SSM client.
         param_type:  One of ``String``, ``SecureString``, or ``StringList``.
         overwrite:   Allow overwriting an existing parameter.
         kms_key_id:  KMS key ARN/alias for ``SecureString`` encryption.
         description: Optional description stored alongside the parameter.
-        ssm_client:  A boto3 SSM client.
 
     Returns:
         The version number of the written parameter.
@@ -43,14 +43,14 @@ def put_parameter(
         PutError: On any AWS API error, including ``ParameterAlreadyExists``
                   when *overwrite* is ``False``.
     """
-    if ssm_client is None:
-        raise PutError("ssm_client is required")
-
     put_kwargs: dict[str, Any] = {
         "Name": path,
         "Value": value,
         "Type": param_type,
         "Overwrite": overwrite,
+        # Standard tier rejects values > 4 KB; Intelligent-Tiering picks Advanced
+        # only when needed (and never downgrades an existing one).
+        "Tier": "Intelligent-Tiering",
     }
     if param_type == "SecureString" and kms_key_id:
         put_kwargs["KeyId"] = kms_key_id

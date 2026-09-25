@@ -7,6 +7,42 @@
 
 ---
 
+## Follow-up review — 2026-09-25
+
+Re-review of `main` at `2163de0` (v0.4.0). Fixed on branch `claude/serene-babbage-npxo5e`:
+
+| Severity | Finding | Status |
+|----------|---------|--------|
+| High | Parameter values rendered raw, allowing terminal escape-sequence injection (OSC 52 clipboard write, screen clear) by anyone with `ssm:PutParameter` | ✅ Control characters escaped in `formatters._truncate` |
+| Medium | `--filter` ignored for `--output json` | ✅ Fixed, with test |
+| Medium | `copy --dry-run` of a leaf parameter showed `/dest//src/path` | ✅ Plan now uses `copier.rewrite_path` |
+| Medium | `copy` dropped `DataType` and failed on values > 4 KB (Standard tier) | ✅ `DataType` preserved; writes use `Intelligent-Tiering` |
+| Medium | `publish.yml` had no `permissions:` block, unpinned install, no mypy | ✅ Fixed |
+| Low | `diff` missed type-only changes; JSON mode lacked the undecrypted-SecureString warning | ✅ Fixed |
+| Low | Errors printed to stdout | ✅ Moved to stderr |
+| Low | `put --overwrite` said "Updated" for new parameters | ✅ Based on returned version |
+| Low | `sanitize_error` substring-replaced short values, garbling messages | ✅ Token-bounded replacement |
+| Low | black not enforced; ruff/black line lengths disagreed; pre-commit versions drifted; CI ran twice per PR; no-op coverage upload | ✅ Fixed |
+| Low | Dead code (`CopyError`, `copy_namespace(dry_run)`, `TreeNode.is_leaf`, unreachable branches, duplicated helpers) | ✅ Removed |
+| **Medium** | **`backup.yml` still uses `secrets: inherit` into `@main`** | ❌ **Open** — change below |
+
+**Open item — `backup.yml`.** The reusable workflow (`Specter099/.github`, `main` at
+`3d424514d561895b95d3b05091b580dfc837fb8d`) declares exactly one optional secret,
+`AWS_ROLE_ARN`, and falls back to an `AWS_ROLE_ARN` repository variable. Replace the
+`uses:`/`secrets:` lines with:
+
+```yaml
+    uses: Specter099/.github/.github/workflows/repo-backup.yml@3d424514d561895b95d3b05091b580dfc837fb8d  # main
+    with:
+      s3-bucket: github-repo-backup-1b114b0d7fd4
+    secrets:
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+```
+
+Then trigger the workflow manually once (`workflow_dispatch`) to confirm the backup still succeeds.
+
+---
+
 ## Summary
 
 ssmtree has a strong security baseline for a CLI of its kind: SecureString values are redacted by default (with tests asserting it), write operations default to `Overwrite=False` behind confirmation prompts, paths are validated against a strict regex on every command, PyPI publishing uses OIDC trusted publishing, CI actions are SHA-pinned, and there is no shell/exec/temp-file/hard-coded-credential exposure anywhere in the codebase.
@@ -40,7 +76,7 @@ access or decisions outside the codebase (noted below).
 | 2 | Copy errors not sanitized | ✅ Fixed — shared `ssmtree.errors.sanitize_error`, with test |
 | 3 | Uncaught traceback on bad profile/region | ✅ Fixed — `make_client` wrapped in `ClientCreationError`, with tests |
 | 4 | Publish workflow mutable action refs | ✅ Fixed — `publish.yml` and `claude.yml` SHA-pinned |
-| 5 | Backup `secrets: inherit` + `@main` | ⚠️ Partial — `secrets: inherit` removed (least privilege); `@main` SHA-pin deferred (org-repo SHA not resolvable here) |
+| 5 | Backup `secrets: inherit` + `@main` | ❌ Open — `secrets: inherit` was restored in #67 and `@main` is still unpinned; see the 2026-09-25 follow-up below |
 | 6 | `copy` exits 0 on write failure | ✅ Fixed — non-zero exit, with test |
 | 7 | No `permissions:` block in `ci.yml` | ✅ Fixed — `contents: read` |
 | 8 | No lockfile / unpinned deps | ✅ Fixed — `constraints-dev.txt`, `pip-audit` pinned via dev extra, moto `>=5` |

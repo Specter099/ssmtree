@@ -74,5 +74,5 @@ Tests use **moto** to mock SSM. All tests run against an in-process mock — no 
 ## Code Style
 
 - **Ruff**: line length 100, Python 3.11 target, rules `E F I UP`
-- **Black**: default settings (used for formatting)
+- **Black**: line length 100, Python 3.11 target (enforced in CI)
 - **mypy**: strict mode, `ignore_missing_imports = true`
