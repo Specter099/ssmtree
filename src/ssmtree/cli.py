@@ -486,7 +486,9 @@ def put_cmd(
     if from_stdin:
         if value is not None:
             _abort("Cannot use both a positional VALUE and --stdin.")
-        raw = click.get_text_stream("stdin").read()
+        # click.get_text_stream is deprecated (removed in click 9); CliRunner
+        # swaps sys.stdin, so reading it directly behaves the same in tests.
+        raw = sys.stdin.read()
         # Strip exactly one trailing newline (from echo/heredoc), but preserve
         # intentional trailing newlines beyond the first.
         if raw.endswith("\n"):
